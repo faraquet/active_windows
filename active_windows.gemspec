@@ -5,14 +5,14 @@ require_relative "lib/active_windows/version"
 Gem::Specification.new do |spec|
   spec.name = "active_windows"
   spec.version = ActiveWindows::VERSION
-  spec.authors = ["Andriichuk"]
+  spec.authors = ["Andrei Andriichuk"]
   spec.email = ["andreiandriichuk@gmail.com"]
 
   spec.summary = "TODO: Write a short summary, because RubyGems requires one."
   spec.description = "TODO: Write a longer description or delete this line."
   spec.homepage = "TODO: Put your gem's website or public repo URL here."
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.1.0"
+  spec.required_ruby_version = ">= 3.3.0"
 
   spec.metadata["allowed_push_host"] = "TODO: Set to your gem server 'https://example.com'"
 
@@ -33,8 +33,17 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  # Uncomment to register a new dependency of your gem
-  # spec.add_dependency "example-gem", "~> 1.0"
+  # Dependencies
+  spec.add_dependency "activerecord", ">= 8.0"
+  spec.add_dependency "activesupport", ">= 8.0"
+  spec.add_dependency "arel", ">= 9.0"
+
+  # Development dependencies
+  spec.add_development_dependency "rails", ">= 8.0"
+  spec.add_development_dependency "rspec", "~> 3.0"
+  spec.add_development_dependency "sqlite3", "~> 1.4"
+  spec.add_development_dependency "bundler", "~> 2.0"
+  spec.add_development_dependency "rake", "~> 13.0"
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://bundler.io/guides/creating_gem.html
