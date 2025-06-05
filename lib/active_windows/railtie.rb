@@ -1,3 +1,4 @@
+require "rails/railtie"
 module ActiveWindows
   class Railtie < Rails::Railtie
     initializer "active_windows.active_record" do

@@ -1,10 +1,11 @@
 # frozen_string_literal: true
 
+require "bundler/setup"
+require "rspec"
 require "active_windows"
-require 'bundler/setup'
-require_relative 'support/database'
-require 'rspec'
+require_relative "support/database"
 
+# This is crucial - it loads RSpec's DSL methods like 'describe', 'it', etc.
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = ".rspec_status"
@@ -19,16 +20,4 @@ RSpec.configure do |config|
   config.before(:each) do
     [User].each(&:delete_all)
   end
-end
-
-
-# Load database configuration and models
-
-RSpec.configure do |config|
-  config.expect_with :rspec do |c|
-    c.syntax = :expect
-  end
-
-
-
 end
