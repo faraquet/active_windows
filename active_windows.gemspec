@@ -33,4 +33,6 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "bundler", ">= 2.0"
   spec.add_development_dependency "rails", ">= 8.0"
   spec.add_development_dependency "sqlite3", ">= 2.1"
+  spec.add_development_dependency "pg", ">= 1.5"
+  spec.add_development_dependency "mysql2", ">= 0.5"
 end

@@ -7,9 +7,9 @@ on:
   pull_request:
 
 jobs:
-  test:
+  sqlite:
     runs-on: ubuntu-latest
-    name: Ruby ${{ matrix.ruby }}
+    name: SQLite / Ruby ${{ matrix.ruby }}
     strategy:
       fail-fast: false
       matrix:
@@ -26,4 +26,89 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
       - name: Run tests
+        run: bundle exec rake
+
+  postgresql:
+    runs-on: ubuntu-latest
+    name: PostgreSQL / Ruby ${{ matrix.ruby }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby:
+          - "3.3"
+          - "3.4"
+          - "4.0"
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: active_windows_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Run tests
+        env:
+          DB_ADAPTER: postgresql
+          POSTGRES_DB: active_windows_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+        run: bundle exec rake
+
+  mysql:
+    runs-on: ubuntu-latest
+    name: MySQL / Ruby ${{ matrix.ruby }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby:
+          - "3.3"
+          - "3.4"
+          - "4.0"
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: active_windows_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Run tests
+        env:
+          DB_ADAPTER: mysql2
+          MYSQL_DB: active_windows_test
+          MYSQL_USER: root
+          MYSQL_PASSWORD: root
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
         run: bundle exec rake
