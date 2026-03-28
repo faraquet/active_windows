@@ -72,9 +72,18 @@ module ActiveWindows
       raise ArgumentError, "wrong number of arguments (given 0, expected 1+)" if args.empty?
 
       processed = process_window_args(args)
-      arel_nodes = processed.map { |name, options| build_window_function(name, options || {}) }
 
       result = spawn
+
+      # Auto-join has_one associations referenced in partition/order
+      joins_needed = processed.flat_map do |_name, options|
+        next [] unless options.is_a?(Hash)
+        association_joins_for(options[:partition]) + association_joins_for(options[:order])
+      end.uniq
+      result = result.joins(*joins_needed) if joins_needed.any?
+
+      arel_nodes = processed.map { |name, options| build_window_function(name, options || {}) }
+
       # Ensure we keep all columns alongside the window function columns
       result = result.select(klass.arel_table[Arel.star]) if result.select_values.empty?
       result.select(*arel_nodes)
@@ -217,18 +226,31 @@ module ActiveWindows
       if name.is_a?(Arel::Nodes::Node) || name.is_a?(Arel::Nodes::SqlLiteral)
         name
       else
-        klass.arel_table[resolve_column_name(name)]
+        resolve_column(name)
       end
     end
 
-    def resolve_column_name(name)
+    def resolve_column(name)
       name_sym = name.to_sym
-      return name_sym if klass.column_names.include?(name.to_s)
+      return klass.arel_table[name_sym] if klass.column_names.include?(name.to_s)
 
       reflection = klass.reflect_on_association(name_sym)
-      return reflection.foreign_key.to_sym if reflection&.macro == :belongs_to
+      if reflection&.macro == :belongs_to
+        klass.arel_table[reflection.foreign_key.to_sym]
+      elsif reflection&.macro == :has_one
+        reflection.klass.arel_table[reflection.klass.primary_key.to_sym]
+      else
+        klass.arel_table[name_sym]
+      end
+    end
 
-      name_sym
+    def association_joins_for(columns)
+      Array(columns).filter_map do |col|
+        next unless col.is_a?(Symbol) || col.is_a?(String)
+
+        reflection = klass.reflect_on_association(col.to_sym)
+        col.to_sym if reflection&.macro == :has_one
+      end
     end
 
     def arel_order(expr)

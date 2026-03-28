@@ -688,4 +688,53 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, Order.connection.quote_column_name("user_id")
   end
+
+  # has_one association name resolution
+
+  def test_has_one_partition_by_auto_joins_and_resolves
+    alice = User.find_by(name: "Alice")
+    bob = User.find_by(name: "Bob")
+    Profile.create!(user: alice, level: "senior")
+    Profile.create!(user: bob, level: "junior")
+
+    sql = User.row_number.partition_by(:profile).window_order(:salary).as(:rn).to_sql
+
+    assert_includes sql, "JOIN"
+    assert_includes sql, Profile.connection.quote_column_name("profiles")
+    assert_includes sql, "#{q('profiles')}.#{q('id')}"
+  end
+
+  def test_has_one_partition_by_produces_correct_results
+    alice = User.find_by(name: "Alice")
+    bob = User.find_by(name: "Bob")
+    Profile.create!(user: alice, level: "senior")
+    Profile.create!(user: bob, level: "junior")
+
+    results = User.row_number.partition_by(:profile).window_order(:salary).as(:rn).to_a
+
+    assert_equal 2, results.length
+    results.each { |u| assert_includes u.attributes.keys, "rn" }
+  end
+
+  def test_has_one_in_hash_api_auto_joins
+    alice = User.find_by(name: "Alice")
+    Profile.create!(user: alice, level: "senior")
+
+    sql = User.window(row_number: { partition: :profile, order: :salary, as: :rn }).to_sql
+
+    assert_includes sql, "JOIN"
+    assert_includes sql, "#{q('profiles')}.#{q('id')}"
+  end
+
+  def test_has_one_window_order_auto_joins
+    alice = User.find_by(name: "Alice")
+    bob = User.find_by(name: "Bob")
+    Profile.create!(user: alice, level: "senior")
+    Profile.create!(user: bob, level: "junior")
+
+    sql = User.row_number.window_order(:profile).as(:rn).to_sql
+
+    assert_includes sql, "JOIN"
+    assert_includes sql, "#{q('profiles')}.#{q('id')}"
+  end
 end
