@@ -237,13 +237,67 @@ User.lag(:name)
 User.ntile(4).order(:salary).as(:quartile)
 ```
 
-## Development
+### Rank users by total order amount (with joins)
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests.
+```ruby
+User.joins(:orders)
+    .group(:id)
+    .select("users.*, SUM(orders.amount) AS total_spent")
+    .window(rank: { order: "total_spent", as: :spending_rank })
+```
+
+### Window function on joined data
+
+```ruby
+# Rank orders by amount within each user
+Order.joins(:user)
+     .row_number
+     .partition_by("users.id")
+     .order(amount: :desc)
+     .as(:order_rank)
+
+# Number each user's orders chronologically
+Order.joins(:user)
+     .select("orders.*, users.name AS user_name")
+     .row_number
+     .partition_by(:user_id)
+     .order(:created_at)
+     .as(:order_number)
+```
+
+### Combine window functions with scoped queries
+
+```ruby
+# Running total of order amounts per user
+Order.joins(:user)
+     .where(users: { department: "Engineering" })
+     .window(sum: {
+       value: :amount,
+       partition: :user_id,
+       order: :created_at,
+       frame: "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW",
+       as: :running_total
+     })
+```
+
+## Development
 
 ```bash
 bundle install
-bundle exec rspec
+bundle exec rake test
+```
+
+Run tests against a specific database:
+
+```bash
+# SQLite (default)
+bundle exec rake test
+
+# PostgreSQL
+DB_ADAPTER=postgresql POSTGRES_DB=active_windows_test bundle exec rake test
+
+# MySQL
+DB_ADAPTER=mysql2 MYSQL_DB=active_windows_test bundle exec rake test
 ```
 
 ## Contributing
