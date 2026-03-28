@@ -217,8 +217,18 @@ module ActiveWindows
       if name.is_a?(Arel::Nodes::Node) || name.is_a?(Arel::Nodes::SqlLiteral)
         name
       else
-        klass.arel_table[name.to_sym]
+        klass.arel_table[resolve_column_name(name)]
       end
+    end
+
+    def resolve_column_name(name)
+      name_sym = name.to_sym
+      return name_sym if klass.column_names.include?(name.to_s)
+
+      reflection = klass.reflect_on_association(name_sym)
+      return reflection.foreign_key.to_sym if reflection&.macro == :belongs_to
+
+      name_sym
     end
 
     def arel_order(expr)

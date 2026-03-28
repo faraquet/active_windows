@@ -84,6 +84,19 @@ Available options:
 | `:frame` | `String` | Raw SQL frame clause (e.g. `"ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING"`) |
 | `:value` | `Symbol`, `String`, `Array` | Expression(s) passed as function arguments |
 
+### Association Names
+
+You can use `belongs_to` association names instead of foreign key columns. ActiveWindows automatically resolves them:
+
+```ruby
+# These are equivalent:
+Order.row_number.partition_by(:user).window_order(:amount).as(:rn)
+Order.row_number.partition_by(:user_id).window_order(:amount).as(:rn)
+
+# Works in the hash API too:
+Order.window(row_number: { partition: :user, order: :amount, as: :rn })
+```
+
 ### Chaining with ActiveRecord
 
 Window functions integrate naturally with standard ActiveRecord methods:

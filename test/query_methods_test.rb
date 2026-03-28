@@ -632,4 +632,60 @@ class QueryMethodsTest < Minitest::Test
     assert_equal 2, results.length
     assert_equal %w[Alice Bob], results.map(&:name).sort
   end
+
+  # Association name resolution
+
+  def test_partition_by_association_name_resolves_to_foreign_key
+    alice = User.find_by(name: "Alice")
+    bob = User.find_by(name: "Bob")
+    Order.create!(user: alice, amount: 100)
+    Order.create!(user: alice, amount: 200)
+    Order.create!(user: bob, amount: 300)
+
+    sql = Order.row_number.partition_by(:user).window_order(:amount).as(:rn).to_sql
+
+    assert_includes sql, Order.connection.quote_column_name("user_id")
+    refute_includes sql, "\"user\""
+  end
+
+  def test_partition_by_association_name_produces_correct_results
+    alice = User.find_by(name: "Alice")
+    bob = User.find_by(name: "Bob")
+    Order.create!(user: alice, amount: 100)
+    Order.create!(user: alice, amount: 200)
+    Order.create!(user: bob, amount: 300)
+
+    results = Order.row_number.partition_by(:user).window_order(:amount).as(:rn).to_a
+
+    alice_orders = results.select { |o| o.user_id == alice.id }.sort_by { |o| o.attributes["rn"].to_i }
+    assert_equal [1, 2], alice_orders.map { |o| o.attributes["rn"].to_i }
+
+    bob_orders = results.select { |o| o.user_id == bob.id }
+    assert_equal [1], bob_orders.map { |o| o.attributes["rn"].to_i }
+  end
+
+  def test_window_order_by_association_name_resolves_to_foreign_key
+    alice = User.find_by(name: "Alice")
+    Order.create!(user: alice, amount: 100)
+
+    sql = Order.row_number.window_order(:user).as(:rn).to_sql
+
+    assert_includes sql, Order.connection.quote_column_name("user_id")
+  end
+
+  def test_hash_api_with_association_name
+    alice = User.find_by(name: "Alice")
+    Order.create!(user: alice, amount: 100)
+    Order.create!(user: alice, amount: 200)
+
+    sql = Order.window(row_number: { partition: :user, order: :amount, as: :rn }).to_sql
+
+    assert_includes sql, Order.connection.quote_column_name("user_id")
+  end
+
+  def test_actual_column_name_still_works
+    sql = Order.row_number.partition_by(:user_id).window_order(:amount).as(:rn).to_sql
+
+    assert_includes sql, Order.connection.quote_column_name("user_id")
+  end
 end

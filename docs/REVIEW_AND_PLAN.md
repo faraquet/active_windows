@@ -34,6 +34,8 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 - ~~**PostgreSQL CI**~~ — Added. GitHub Actions workflow tests against PostgreSQL 17 with service container.
 - ~~**MySQL CI**~~ — Added. GitHub Actions workflow tests against MySQL 8.0 with service container.
 - ~~**MySQL compatibility**~~ — Fixed. Aliases now use `klass.connection.quote_column_name` to properly quote reserved words (e.g., `rank`) with backticks on MySQL and double quotes on PostgreSQL/SQLite. Test assertions use adapter-agnostic `q()` and `col()` helpers.
+- ~~**WindowChain `order` naming collision**~~ — Fixed. Renamed to `window_order` to avoid conflict with ActiveRecord's `.order()`. WindowChain now delegates `.order()` to the relation for query-level ordering. Uses `method_missing` for full relation method coverage.
+- ~~**Association name resolution**~~ — Added. `partition_by(:user)` automatically resolves to `user_id` via `belongs_to` reflection. Works in both fluent and hash APIs. 74 tests, 355 assertions.
 
 ---
 
