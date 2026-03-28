@@ -4,11 +4,12 @@ require "active_record"
 
 module ActiveWindows
   class WindowChain
-    attr_reader :function, :alias_name, :partition_columns, :order_columns
+    attr_reader :function, :alias_name, :partition_columns, :order_columns, :function_args
 
-    def initialize(function, relation)
+    def initialize(function, relation, function_args: [])
       @function = function
       @relation = relation
+      @function_args = function_args
       @alias_name = nil
       @partition_columns = []
       @order_columns = []
@@ -34,6 +35,7 @@ module ActiveWindows
       options[:partition] = @partition_columns unless @partition_columns.empty?
       options[:order] = @order_columns unless @order_columns.empty?
       options[:as] = @alias_name if @alias_name
+      options[:value] = @function_args unless @function_args.empty?
       { @function => options }
     end
 
@@ -65,8 +67,75 @@ module ActiveWindows
       result.select(*arel_nodes)
     end
 
+    # Ranking window functions
     def row_number
       WindowChain.new(:row_number, spawn)
+    end
+
+    def rank
+      WindowChain.new(:rank, spawn)
+    end
+
+    def dense_rank
+      WindowChain.new(:dense_rank, spawn)
+    end
+
+    def percent_rank
+      WindowChain.new(:percent_rank, spawn)
+    end
+
+    def cume_dist
+      WindowChain.new(:cume_dist, spawn)
+    end
+
+    def ntile(num_buckets)
+      WindowChain.new(:ntile, spawn, function_args: [num_buckets.to_s])
+    end
+
+    # Value window functions
+    def lag(column, offset = 1, default = nil)
+      args = [column.to_s, offset.to_s]
+      args << default.to_s unless default.nil?
+      WindowChain.new(:lag, spawn, function_args: args)
+    end
+
+    def lead(column, offset = 1, default = nil)
+      args = [column.to_s, offset.to_s]
+      args << default.to_s unless default.nil?
+      WindowChain.new(:lead, spawn, function_args: args)
+    end
+
+    def first_value(column)
+      WindowChain.new(:first_value, spawn, function_args: [column.to_s])
+    end
+
+    def last_value(column)
+      WindowChain.new(:last_value, spawn, function_args: [column.to_s])
+    end
+
+    def nth_value(column, n)
+      WindowChain.new(:nth_value, spawn, function_args: [column.to_s, n.to_s])
+    end
+
+    # Aggregate window functions
+    def window_sum(column)
+      WindowChain.new(:sum, spawn, function_args: [column.to_s])
+    end
+
+    def window_avg(column)
+      WindowChain.new(:avg, spawn, function_args: [column.to_s])
+    end
+
+    def window_count(column = "*")
+      WindowChain.new(:count, spawn, function_args: [column.to_s])
+    end
+
+    def window_min(column)
+      WindowChain.new(:min, spawn, function_args: [column.to_s])
+    end
+
+    def window_max(column)
+      WindowChain.new(:max, spawn, function_args: [column.to_s])
     end
 
     private

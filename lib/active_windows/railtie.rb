@@ -7,7 +7,7 @@ module ActiveWindows
     initializer "active_windows.active_record" do
       ActiveSupport.on_load :active_record do
         ActiveRecord::Relation.include(ActiveWindows::QueryMethods)
-        ActiveRecord::Querying.delegate(:window, :row_number, to: :all)
+        ActiveRecord::Querying.delegate(*ActiveWindows::QUERY_METHODS, to: :all)
       end
     end
   end

@@ -11,9 +11,10 @@ RSpec.describe ActiveWindows::QueryMethods do
   end
 
   describe "class-level delegation" do
-    it "delegates window and row_number to all" do
-      expect(User).to respond_to(:window)
-      expect(User).to respond_to(:row_number)
+    it "delegates all window function methods" do
+      ActiveWindows::QUERY_METHODS.each do |method|
+        expect(User).to respond_to(method)
+      end
     end
   end
 
@@ -95,6 +96,253 @@ RSpec.describe ActiveWindows::QueryMethods do
     end
   end
 
+  describe "#rank" do
+    it "generates RANK() SQL" do
+      sql = User.rank.partition_by(:department).order(:salary).as(:salary_rank).to_sql
+
+      expect(sql).to include("RANK()")
+      expect(sql).to include("PARTITION BY")
+      expect(sql).to include("AS salary_rank")
+    end
+
+    it "computes correct rank values" do
+      results = User.window(rank: { partition: :department, order: :salary, as: :salary_rank })
+      eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.salary }
+
+      expect(eng.map { |u| u.attributes["salary_rank"].to_i }).to eq([1, 2])
+    end
+  end
+
+  describe "#dense_rank" do
+    it "generates DENSE_RANK() SQL" do
+      sql = User.dense_rank.partition_by(:department).order(:salary).as(:dr).to_sql
+
+      expect(sql).to include("DENSE_RANK()")
+      expect(sql).to include("AS dr")
+    end
+
+    it "executes and returns results" do
+      results = User.dense_rank.partition_by(:department).order(:salary).as(:dr).to_a
+
+      expect(results.length).to eq(4)
+      results.each { |u| expect(u.attributes).to have_key("dr") }
+    end
+  end
+
+  describe "#percent_rank" do
+    it "generates PERCENT_RANK() SQL" do
+      sql = User.percent_rank.order(:salary).as(:pr).to_sql
+
+      expect(sql).to include("PERCENT_RANK()")
+      expect(sql).to include("AS pr")
+    end
+  end
+
+  describe "#cume_dist" do
+    it "generates CUME_DIST() SQL" do
+      sql = User.cume_dist.order(:salary).as(:cd).to_sql
+
+      expect(sql).to include("CUME_DIST()")
+      expect(sql).to include("AS cd")
+    end
+  end
+
+  describe "#ntile" do
+    it "generates NTILE(n) SQL" do
+      sql = User.ntile(4).order(:salary).as(:quartile).to_sql
+
+      expect(sql).to include("NTILE(")
+      expect(sql).to include("AS quartile")
+    end
+
+    it "assigns correct bucket values" do
+      results = User.ntile(2).order(:salary).as(:half).to_a
+
+      halves = results.map { |u| u.attributes["half"].to_i }
+      expect(halves).to include(1, 2)
+    end
+  end
+
+  describe "#lag" do
+    it "generates LAG() SQL with column and offset" do
+      sql = User.lag(:salary).order(:hire_date).as(:prev_salary).to_sql
+
+      expect(sql).to include("LAG(")
+      expect(sql).to include("salary")
+      expect(sql).to include("AS prev_salary")
+    end
+
+    it "accepts custom offset" do
+      sql = User.lag(:salary, 2).order(:hire_date).as(:prev2).to_sql
+
+      expect(sql).to include("LAG(")
+    end
+
+    it "accepts default value" do
+      sql = User.lag(:salary, 1, 0).order(:hire_date).as(:prev_salary).to_sql
+
+      expect(sql).to include("LAG(")
+    end
+
+    it "executes and returns results" do
+      results = User.lag(:salary).order(:hire_date).as(:prev_salary).to_a
+
+      expect(results.length).to eq(4)
+      results.each { |u| expect(u.attributes).to have_key("prev_salary") }
+    end
+  end
+
+  describe "#lead" do
+    it "generates LEAD() SQL" do
+      sql = User.lead(:salary).order(:hire_date).as(:next_salary).to_sql
+
+      expect(sql).to include("LEAD(")
+      expect(sql).to include("salary")
+      expect(sql).to include("AS next_salary")
+    end
+
+    it "accepts custom offset and default" do
+      sql = User.lead(:salary, 2, 0).order(:hire_date).as(:next2).to_sql
+
+      expect(sql).to include("LEAD(")
+    end
+
+    it "executes and returns results" do
+      results = User.lead(:salary).order(:hire_date).as(:next_salary).to_a
+
+      expect(results.length).to eq(4)
+    end
+  end
+
+  describe "#first_value" do
+    it "generates FIRST_VALUE() SQL" do
+      sql = User.first_value(:name).partition_by(:department).order(:salary).as(:lowest_paid).to_sql
+
+      expect(sql).to include("FIRST_VALUE(")
+      expect(sql).to include("name")
+      expect(sql).to include("AS lowest_paid")
+    end
+
+    it "returns the first value in partition" do
+      results = User.first_value(:name).partition_by(:department).order(:salary).as(:lowest_paid).to_a
+      eng = results.select { |u| u.department == "Engineering" }
+
+      eng.each { |u| expect(u.attributes["lowest_paid"]).to eq("Alice") }
+    end
+  end
+
+  describe "#last_value" do
+    it "generates LAST_VALUE() SQL" do
+      sql = User.last_value(:name).partition_by(:department).order(:salary).as(:lv).to_sql
+
+      expect(sql).to include("LAST_VALUE(")
+      expect(sql).to include("name")
+      expect(sql).to include("AS lv")
+    end
+  end
+
+  describe "#nth_value" do
+    it "generates NTH_VALUE() SQL" do
+      sql = User.nth_value(:name, 2).partition_by(:department).order(:salary).as(:second).to_sql
+
+      expect(sql).to include("NTH_VALUE(")
+      expect(sql).to include("name")
+      expect(sql).to include("AS second")
+    end
+  end
+
+  describe "#window_sum" do
+    it "generates SUM() OVER SQL" do
+      sql = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_sql
+
+      expect(sql).to include("SUM(")
+      expect(sql).to include("salary")
+      expect(sql).to include("OVER")
+      expect(sql).to include("AS dept_total")
+    end
+
+    it "computes correct partition sums" do
+      results = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_a
+      eng = results.select { |u| u.department == "Engineering" }
+
+      eng.each { |u| expect(u.attributes["dept_total"].to_i).to eq(170_000) }
+    end
+  end
+
+  describe "#window_avg" do
+    it "generates AVG() OVER SQL" do
+      sql = User.window_avg(:salary).partition_by(:department).as(:dept_avg).to_sql
+
+      expect(sql).to include("AVG(")
+      expect(sql).to include("salary")
+      expect(sql).to include("AS dept_avg")
+    end
+
+    it "computes correct partition averages" do
+      results = User.window_avg(:salary).partition_by(:department).as(:dept_avg).to_a
+      eng = results.select { |u| u.department == "Engineering" }
+
+      eng.each { |u| expect(u.attributes["dept_avg"].to_f).to eq(85_000.0) }
+    end
+  end
+
+  describe "#window_count" do
+    it "generates COUNT() OVER SQL" do
+      sql = User.window_count(:id).partition_by(:department).as(:dept_count).to_sql
+
+      expect(sql).to include("COUNT(")
+      expect(sql).to include("AS dept_count")
+    end
+
+    it "counts correctly per partition" do
+      results = User.window_count(:id).partition_by(:department).as(:dept_count).to_a
+      eng = results.select { |u| u.department == "Engineering" }
+
+      eng.each { |u| expect(u.attributes["dept_count"].to_i).to eq(2) }
+    end
+
+    it "defaults to COUNT(*) when no column given" do
+      sql = User.window_count.partition_by(:department).as(:cnt).to_sql
+
+      expect(sql).to include("COUNT(")
+      expect(sql).to include("*")
+    end
+  end
+
+  describe "#window_min" do
+    it "generates MIN() OVER SQL" do
+      sql = User.window_min(:salary).partition_by(:department).as(:min_salary).to_sql
+
+      expect(sql).to include("MIN(")
+      expect(sql).to include("salary")
+      expect(sql).to include("AS min_salary")
+    end
+
+    it "returns correct minimum per partition" do
+      results = User.window_min(:salary).partition_by(:department).as(:min_salary).to_a
+      eng = results.select { |u| u.department == "Engineering" }
+
+      eng.each { |u| expect(u.attributes["min_salary"].to_i).to eq(80_000) }
+    end
+  end
+
+  describe "#window_max" do
+    it "generates MAX() OVER SQL" do
+      sql = User.window_max(:salary).partition_by(:department).as(:max_salary).to_sql
+
+      expect(sql).to include("MAX(")
+      expect(sql).to include("salary")
+      expect(sql).to include("AS max_salary")
+    end
+
+    it "returns correct maximum per partition" do
+      results = User.window_max(:salary).partition_by(:department).as(:max_salary).to_a
+      eng = results.select { |u| u.department == "Engineering" }
+
+      eng.each { |u| expect(u.attributes["max_salary"].to_i).to eq(90_000) }
+    end
+  end
+
   describe "query execution" do
     it "returns results with window function values" do
       results = User.window(row_number: { partition: :department, order: :salary, as: :rank })
@@ -102,7 +350,6 @@ RSpec.describe ActiveWindows::QueryMethods do
       expect(results.length).to eq(4)
       results.each do |user|
         expect(user).to respond_to(:name)
-        # Window function alias is accessible as an attribute
         expect(user.attributes).to have_key("rank")
       end
     end
