@@ -302,7 +302,7 @@ DB_ADAPTER=mysql2 MYSQL_DB=active_windows_test bundle exec rake test
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/andreiandriichuk/active_windows.
+Bug reports and pull requests are welcome on GitHub at https://github.com/faraquet/active_windows.
 
 ## License
 

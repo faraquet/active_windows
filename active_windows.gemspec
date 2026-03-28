@@ -11,11 +11,11 @@ Gem::Specification.new do |spec|
   spec.summary = "A Ruby DSL for SQL window functions in ActiveRecord"
   spec.description = "Expressive, chainable DSL for SQL window functions (ROW_NUMBER, RANK, LAG, LEAD, SUM, etc.) " \
                      "that integrates naturally with ActiveRecord query methods."
-  spec.homepage = "https://github.com/andreiandriichuk/active_windows"
+  spec.homepage = "https://github.com/faraquet/active_windows"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.3.0"
 
-  spec.metadata["source_code_uri"] = "https://github.com/andreiandriichuk/active_windows"
+  spec.metadata["source_code_uri"] = "https://github.com/faraquet/active_windows"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   gemspec = File.basename(__FILE__)
