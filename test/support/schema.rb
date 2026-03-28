@@ -11,6 +11,12 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  create_table :orders, force: true do |t|
+    t.references :user
+    t.decimal :amount
+    t.timestamps
+  end
+
   add_index :users, :department
   add_index :users, :hire_date
 end

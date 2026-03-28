@@ -4,6 +4,7 @@ require "test_helper"
 
 class QueryMethodsTest < Minitest::Test
   def setup
+    Order.delete_all
     User.delete_all
     User.create!(name: "Alice", department: "Engineering", salary: 80_000, hire_date: Date.new(2020, 1, 1))
     User.create!(name: "Bob", department: "Engineering", salary: 90_000, hire_date: Date.new(2021, 1, 1))
@@ -435,5 +436,160 @@ class QueryMethodsTest < Minitest::Test
     results = User.window(row_number: { order: :salary, as: :rn }).limit(2)
 
     assert_equal 2, results.length
+  end
+
+  # Multiple window functions in one call
+
+  def test_multiple_window_functions_in_hash_api
+    sql = User.window(
+      row_number: { partition: :department, order: :salary, as: :rn },
+      rank: { partition: :department, order: :salary, as: :salary_rank }
+    ).to_sql
+
+    assert_includes sql, "ROW_NUMBER()"
+    assert_includes sql, "AS rn"
+    assert_includes sql, "RANK()"
+    assert_includes sql, "AS salary_rank"
+  end
+
+  def test_multiple_window_functions_return_correct_results
+    results = User.window(
+      row_number: { partition: :department, order: :salary, as: :rn },
+      rank: { partition: :department, order: :salary, as: :salary_rank }
+    )
+
+    assert_equal 4, results.length
+    results.each do |user|
+      assert_includes user.attributes.keys, "rn"
+      assert_includes user.attributes.keys, "salary_rank"
+    end
+  end
+
+  def test_multiple_window_functions_values_are_correct
+    results = User.window(
+      row_number: { partition: :department, order: :salary, as: :rn },
+      sum: { value: :salary, partition: :department, as: :dept_total }
+    )
+    eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.attributes["rn"].to_i }
+
+    assert_equal [1, 2], eng.map { |u| u.attributes["rn"].to_i }
+    eng.each { |u| assert_equal 170_000, u.attributes["dept_total"].to_i }
+  end
+
+  def test_chaining_multiple_window_calls
+    results = User.window(row_number: { order: :salary, as: :rn })
+                  .window(rank: { order: :salary, as: :salary_rank })
+
+    assert_equal 4, results.length
+    results.each do |user|
+      assert_includes user.attributes.keys, "rn"
+      assert_includes user.attributes.keys, "salary_rank"
+    end
+  end
+
+  # Edge cases — empty result sets
+
+  def test_window_on_empty_result_set
+    User.delete_all
+    results = User.window(row_number: { order: :salary, as: :rn }).to_a
+
+    assert_empty results
+  end
+
+  def test_window_on_empty_filtered_result
+    results = User.where(department: "Nonexistent")
+                  .window(row_number: { order: :salary, as: :rn }).to_a
+
+    assert_empty results
+  end
+
+  # Edge cases — single-row partitions
+
+  def test_window_with_single_row_partition
+    User.delete_all
+    User.create!(name: "Solo", department: "Legal", salary: 75_000, hire_date: Date.new(2022, 1, 1))
+
+    results = User.row_number.partition_by(:department).order(:salary).as(:rn).to_a
+
+    assert_equal 1, results.length
+    assert_equal 1, results.first.attributes["rn"].to_i
+  end
+
+  def test_aggregate_window_on_single_row_partition
+    User.delete_all
+    User.create!(name: "Solo", department: "Legal", salary: 75_000, hire_date: Date.new(2022, 1, 1))
+
+    results = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_a
+
+    assert_equal 1, results.length
+    assert_equal 75_000, results.first.attributes["dept_total"].to_i
+  end
+
+  # Edge cases — NULL values
+
+  def test_window_with_null_partition_column
+    User.create!(name: "Eve", department: nil, salary: 60_000, hire_date: Date.new(2023, 1, 1))
+
+    results = User.row_number.partition_by(:department).order(:salary).as(:rn).to_a
+    null_dept = results.select { |u| u.department.nil? }
+
+    assert_equal 1, null_dept.length
+    assert_equal 1, null_dept.first.attributes["rn"].to_i
+  end
+
+  def test_window_with_null_order_column
+    User.create!(name: "Eve", department: "Engineering", salary: nil, hire_date: Date.new(2023, 1, 1))
+
+    results = User.row_number.partition_by(:department).order(:salary).as(:rn).to_a
+
+    assert_equal 5, results.length
+    results.each { |u| assert_includes u.attributes.keys, "rn" }
+  end
+
+  def test_window_with_null_value_column
+    User.create!(name: "Eve", department: "Engineering", salary: nil, hire_date: Date.new(2023, 1, 1))
+
+    results = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_a
+    eng = results.select { |u| u.department == "Engineering" }
+
+    assert_equal 3, eng.length
+    # SUM ignores NULLs
+    eng.each { |u| assert_equal 170_000, u.attributes["dept_total"].to_i }
+  end
+
+  # Edge cases — chaining with joins, group, includes
+
+  def test_chains_with_joins
+    alice = User.find_by(name: "Alice")
+    Order.create!(user: alice, amount: 100)
+    Order.create!(user: alice, amount: 200)
+
+    results = User.joins(:orders)
+                  .window(row_number: { order: :salary, as: :rn })
+
+    assert_equal 2, results.length
+    results.each { |u| assert_includes u.attributes.keys, "rn" }
+  end
+
+  def test_chains_with_includes
+    results = User.includes(:orders)
+                  .window(row_number: { order: :salary, as: :rn })
+
+    assert_equal 4, results.length
+    results.each { |u| assert_includes u.attributes.keys, "rn" }
+  end
+
+  def test_chains_with_where_and_joins
+    alice = User.find_by(name: "Alice")
+    bob = User.find_by(name: "Bob")
+    Order.create!(user: alice, amount: 100)
+    Order.create!(user: bob, amount: 300)
+
+    results = User.joins(:orders)
+                  .where(department: "Engineering")
+                  .window(row_number: { order: :salary, as: :rn })
+
+    assert_equal 2, results.length
+    assert_equal %w[Alice Bob], results.map(&:name).sort
   end
 end

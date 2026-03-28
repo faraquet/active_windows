@@ -29,6 +29,7 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 - ~~**Ordering direction**~~ — Fixed. Supports `order(salary: :desc)`, `order({ col: :asc }, { col: :desc })`, and hash API `order: { salary: :desc }`.
 - ~~**Gemfile/gemspec duplication**~~ — Fixed. Dev gems (`minitest`, `rake`) defined only in Gemfile under `test, development` group. No more bundler override warnings.
 - ~~**Cross-platform lockfile**~~ — Fixed. Added `aarch64-linux`, `arm-linux`, `arm64-darwin`, `x86_64-darwin`, `x86_64-linux` platforms.
+- ~~**Multiple window functions in one call**~~ — Tested. Single `window()` with multiple keys and chaining separate `window()` calls both work. 57 tests, 287 assertions.
 
 ---
 
@@ -39,10 +40,7 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 1. **Edge case tests** — Not yet covered:
    - Empty result sets, single-row partitions
    - NULL values in partition/order columns
-   - Multiple window functions in one query
    - Complex chaining with `.joins()`, `.group()`, `.includes()`
-
-2. **Multiple window functions in one call** — The hash API supports it (`User.window(row_number: {...}, rank: {...})`), but this is not tested.
 
 ### Low Priority
 
