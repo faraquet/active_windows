@@ -17,7 +17,6 @@ Gem::Specification.new do |spec|
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/andreiandriichuk/active_windows"
-  spec.metadata["changelog_uri"] = "https://github.com/andreiandriichuk/active_windows/blob/main/CHANGELOG.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   gemspec = File.basename(__FILE__)
