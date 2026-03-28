@@ -44,11 +44,24 @@ module ActiveWindows
       @relation.window(to_window_hash)
     end
 
-    # Delegate common relation/query methods so the chain is transparent
-    delegate :to_sql, :to_a, :to_ary, :load, :loaded?, :each, :map, :first, :last, :count,
-             :where, :select, :joins, :group, :having, :order, :limit, :offset, :reorder, :pluck,
-             :find_each, :find_in_batches, :inspect, :exists?, :any?, :none?, :empty?,
-             to: :to_relation
+    # Delegate to the materialized relation so the chain is transparent.
+    # Explicit delegates for Ruby protocol methods that must be defined eagerly.
+    delegate :to_sql, :to_a, :to_ary, :inspect, to: :to_relation
+
+    private
+
+    def method_missing(method, ...)
+      relation = to_relation
+      if relation.respond_to?(method)
+        relation.public_send(method, ...)
+      else
+        super
+      end
+    end
+
+    def respond_to_missing?(method, include_private = false)
+      to_relation.respond_to?(method, include_private) || super
+    end
   end
 
   module QueryMethods
