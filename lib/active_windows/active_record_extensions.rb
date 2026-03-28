@@ -25,7 +25,7 @@ module ActiveWindows
       self
     end
 
-    def order(*columns)
+    def window_order(*columns)
       @order_columns = columns.flatten
       self
     end
@@ -46,7 +46,7 @@ module ActiveWindows
 
     # Delegate common relation/query methods so the chain is transparent
     delegate :to_sql, :to_a, :to_ary, :load, :loaded?, :each, :map, :first, :last, :count,
-             :where, :select, :joins, :group, :having, :limit, :offset, :reorder, :pluck,
+             :where, :select, :joins, :group, :having, :order, :limit, :offset, :reorder, :pluck,
              :find_each, :find_in_batches, :inspect, :exists?, :any?, :none?, :empty?,
              to: :to_relation
   end

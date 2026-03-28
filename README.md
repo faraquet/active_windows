@@ -4,7 +4,7 @@ A Ruby DSL for SQL window functions in ActiveRecord. Write expressive window fun
 
 ```ruby
 # Fluent API
-User.row_number.partition_by(:department).order(:salary).as(:rank)
+User.row_number.partition_by(:department).window_order(:salary).as(:rank)
 
 # Hash API
 User.window(row_number: { partition: :department, order: :salary, as: :rank })
@@ -41,17 +41,25 @@ ActiveWindows provides two equivalent APIs: a **fluent API** with chainable meth
 
 ### Fluent API
 
-Every window function method returns a chainable object with `.partition_by()`, `.order()`, and `.as()`:
+Every window function method returns a chainable object with `.partition_by()`, `.window_order()`, and `.as()`:
 
 ```ruby
-User.row_number.partition_by(:department).order(:salary).as(:rank)
+User.row_number.partition_by(:department).window_order(:salary).as(:rank)
 ```
 
-All three chain methods are optional. Order can be mixed freely:
+All three chain methods are optional. The fluent API uses `.window_order()` (not `.order()`) to avoid collision with ActiveRecord's `.order()`, which controls the query-level `ORDER BY`. This lets you use both together:
 
 ```ruby
-User.row_number.as(:rn).order(:created_at)
-User.dense_rank.order(:score).as(:position)
+User.row_number.window_order(:salary).as(:rn).order(:name)
+# Window:  OVER (ORDER BY salary)
+# Query:   ORDER BY name
+```
+
+Order can be mixed freely:
+
+```ruby
+User.row_number.as(:rn).window_order(:created_at)
+User.dense_rank.window_order(:score).as(:position)
 ```
 
 ### Hash API
@@ -63,6 +71,8 @@ User.window(
   row_number: { partition: :department, order: :salary, as: :rank }
 )
 ```
+
+The hash API uses `order:` as a key (not a method call), so there's no naming conflict with ActiveRecord's `.order()`.
 
 Available options:
 
@@ -82,7 +92,7 @@ Window functions integrate naturally with standard ActiveRecord methods:
 User.where(active: true)
     .row_number
     .partition_by(:department)
-    .order(:salary)
+    .window_order(:salary)
     .as(:rank)
 
 User.select(:name, :salary)
@@ -100,7 +110,7 @@ When no `.select()` is specified, `*` is automatically included so all model col
 Window function values are accessible as attributes on the returned records:
 
 ```ruby
-results = User.row_number.partition_by(:department).order(:salary).as(:rank)
+results = User.row_number.partition_by(:department).window_order(:salary).as(:rank)
 
 results.each do |user|
   puts "#{user.name}: rank #{user.attributes['rank']}"
@@ -113,44 +123,44 @@ end
 
 ```ruby
 # ROW_NUMBER() - sequential integer within partition
-User.row_number.partition_by(:department).order(:salary).as(:rn)
+User.row_number.partition_by(:department).window_order(:salary).as(:rn)
 
 # RANK() - rank with gaps for ties
-User.rank.partition_by(:department).order(:salary).as(:salary_rank)
+User.rank.partition_by(:department).window_order(:salary).as(:salary_rank)
 
 # DENSE_RANK() - rank without gaps for ties
-User.dense_rank.partition_by(:department).order(:salary).as(:dense_salary_rank)
+User.dense_rank.partition_by(:department).window_order(:salary).as(:dense_salary_rank)
 
 # PERCENT_RANK() - relative rank as a fraction (0 to 1)
-User.percent_rank.order(:salary).as(:percentile)
+User.percent_rank.window_order(:salary).as(:percentile)
 
 # CUME_DIST() - cumulative distribution (fraction of rows <= current row)
-User.cume_dist.order(:salary).as(:cumulative)
+User.cume_dist.window_order(:salary).as(:cumulative)
 
 # NTILE(n) - divide rows into n roughly equal buckets
-User.ntile(4).order(:salary).as(:quartile)
+User.ntile(4).window_order(:salary).as(:quartile)
 ```
 
 ### Value Functions
 
 ```ruby
 # LAG(column, offset, default) - value from a preceding row
-User.lag(:salary).order(:hire_date).as(:prev_salary)
-User.lag(:salary, 2).order(:hire_date).as(:two_back)         # custom offset
-User.lag(:salary, 1, 0).order(:hire_date).as(:prev_or_zero)  # with default
+User.lag(:salary).window_order(:hire_date).as(:prev_salary)
+User.lag(:salary, 2).window_order(:hire_date).as(:two_back)         # custom offset
+User.lag(:salary, 1, 0).window_order(:hire_date).as(:prev_or_zero)  # with default
 
 # LEAD(column, offset, default) - value from a following row
-User.lead(:salary).order(:hire_date).as(:next_salary)
-User.lead(:salary, 2, 0).order(:hire_date).as(:two_ahead)
+User.lead(:salary).window_order(:hire_date).as(:next_salary)
+User.lead(:salary, 2, 0).window_order(:hire_date).as(:two_ahead)
 
 # FIRST_VALUE(column) - first value in the window frame
-User.first_value(:name).partition_by(:department).order(:salary).as(:lowest_paid)
+User.first_value(:name).partition_by(:department).window_order(:salary).as(:lowest_paid)
 
 # LAST_VALUE(column) - last value in the window frame
-User.last_value(:name).partition_by(:department).order(:salary).as(:highest_paid)
+User.last_value(:name).partition_by(:department).window_order(:salary).as(:highest_paid)
 
 # NTH_VALUE(column, n) - nth value in the window frame
-User.nth_value(:name, 2).partition_by(:department).order(:salary).as(:second_lowest)
+User.nth_value(:name, 2).partition_by(:department).window_order(:salary).as(:second_lowest)
 ```
 
 ### Aggregate Window Functions
@@ -196,7 +206,7 @@ User.window(sum: {
 ```ruby
 User.rank
     .partition_by(:department)
-    .order(:salary)
+    .window_order(:salary)
     .as(:salary_rank)
 ```
 
@@ -227,14 +237,14 @@ end
 ```ruby
 User.lag(:name)
     .partition_by(:department)
-    .order(:hire_date)
+    .window_order(:hire_date)
     .as(:previous_hire)
 ```
 
 ### Divide employees into salary quartiles
 
 ```ruby
-User.ntile(4).order(:salary).as(:quartile)
+User.ntile(4).window_order(:salary).as(:quartile)
 ```
 
 ### Rank users by total order amount (with joins)
@@ -253,7 +263,7 @@ User.joins(:orders)
 Order.joins(:user)
      .row_number
      .partition_by("users.id")
-     .order(amount: :desc)
+     .window_order(amount: :desc)
      .as(:order_rank)
 
 # Number each user's orders chronologically
@@ -261,7 +271,7 @@ Order.joins(:user)
      .select("orders.*, users.name AS user_name")
      .row_number
      .partition_by(:user_id)
-     .order(:created_at)
+     .window_order(:created_at)
      .as(:order_number)
 ```
 
