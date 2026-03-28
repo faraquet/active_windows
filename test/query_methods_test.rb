@@ -12,6 +12,23 @@ class QueryMethodsTest < Minitest::Test
     User.create!(name: "Diana", department: "Sales", salary: 85_000, hire_date: Date.new(2019, 3, 1))
   end
 
+  private
+
+  # Adapter-agnostic quoting helpers
+  def q(name)
+    User.connection.quote_column_name(name)
+  end
+
+  def quoted_table(table, column)
+    "#{q(table)}.#{q(column)}"
+  end
+
+  def col(column)
+    quoted_table("users", column)
+  end
+
+  public
+
   # Class-level delegation
 
   def test_delegates_all_window_function_methods
@@ -27,40 +44,40 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "ROW_NUMBER()"
     assert_includes sql, "OVER"
-    assert_includes sql, '"users"."department"'
-    assert_includes sql, '"users"."salary"'
-    assert_includes sql, "AS rank"
+    assert_includes sql, col("department")
+    assert_includes sql, col("salary")
+    assert_includes sql, "AS #{q('rank')}"
   end
 
   def test_window_includes_all_columns
     sql = User.window(row_number: { order: :salary, as: :rn }).to_sql
 
-    assert_includes sql, '"users".*'
+    assert_includes sql, "#{q('users')}.*"
     assert_includes sql, "ROW_NUMBER()"
   end
 
   def test_window_preserves_existing_select
     sql = User.select(:name, :salary).window(row_number: { order: :salary, as: :rn }).to_sql
 
-    assert_includes sql, '"users"."name"'
-    assert_includes sql, '"users"."salary"'
+    assert_includes sql, col("name")
+    assert_includes sql, col("salary")
     assert_includes sql, "ROW_NUMBER()"
-    refute_includes sql, '"users".*'
+    refute_includes sql, "#{q('users')}.*"
   end
 
   def test_window_without_partition
     sql = User.window(row_number: { order: :salary, as: :rn }).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
-    assert_includes sql, '"users"."salary"'
+    assert_includes sql, col("salary")
     refute_includes sql, "PARTITION BY"
   end
 
   def test_window_with_multiple_partition_columns
     sql = User.window(row_number: { partition: [:department, :active], order: :salary, as: :rn }).to_sql
 
-    assert_includes sql, '"users"."department"'
-    assert_includes sql, '"users"."active"'
+    assert_includes sql, col("department")
+    assert_includes sql, col("active")
   end
 
   def test_window_raises_on_unsupported_options
@@ -80,23 +97,23 @@ class QueryMethodsTest < Minitest::Test
     sql = User.row_number.partition_by(:department).order(:salary).as(:rank).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
-    assert_includes sql, '"users"."department"'
-    assert_includes sql, '"users"."salary"'
-    assert_includes sql, "AS rank"
+    assert_includes sql, col("department")
+    assert_includes sql, col("salary")
+    assert_includes sql, "AS #{q('rank')}"
   end
 
   def test_row_number_with_just_order
     sql = User.row_number.order(:salary).as(:rn).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
-    assert_includes sql, '"users"."salary"'
+    assert_includes sql, col("salary")
   end
 
   def test_row_number_with_just_as
     sql = User.row_number.as(:rn).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
-    assert_includes sql, "AS rn"
+    assert_includes sql, "AS #{q('rn')}"
   end
 
   # Rank
@@ -106,7 +123,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "RANK()"
     assert_includes sql, "PARTITION BY"
-    assert_includes sql, "AS salary_rank"
+    assert_includes sql, "AS #{q('salary_rank')}"
   end
 
   def test_rank_computes_correct_values
@@ -122,7 +139,7 @@ class QueryMethodsTest < Minitest::Test
     sql = User.dense_rank.partition_by(:department).order(:salary).as(:dr).to_sql
 
     assert_includes sql, "DENSE_RANK()"
-    assert_includes sql, "AS dr"
+    assert_includes sql, "AS #{q('dr')}"
   end
 
   def test_dense_rank_executes_and_returns_results
@@ -138,7 +155,7 @@ class QueryMethodsTest < Minitest::Test
     sql = User.percent_rank.order(:salary).as(:pr).to_sql
 
     assert_includes sql, "PERCENT_RANK()"
-    assert_includes sql, "AS pr"
+    assert_includes sql, "AS #{q('pr')}"
   end
 
   # Cume dist
@@ -147,7 +164,7 @@ class QueryMethodsTest < Minitest::Test
     sql = User.cume_dist.order(:salary).as(:cd).to_sql
 
     assert_includes sql, "CUME_DIST()"
-    assert_includes sql, "AS cd"
+    assert_includes sql, "AS #{q('cd')}"
   end
 
   # Ntile
@@ -156,7 +173,7 @@ class QueryMethodsTest < Minitest::Test
     sql = User.ntile(4).order(:salary).as(:quartile).to_sql
 
     assert_includes sql, "NTILE("
-    assert_includes sql, "AS quartile"
+    assert_includes sql, "AS #{q('quartile')}"
   end
 
   def test_ntile_assigns_correct_bucket_values
@@ -174,7 +191,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "LAG("
     assert_includes sql, "salary"
-    assert_includes sql, "AS prev_salary"
+    assert_includes sql, "AS #{q('prev_salary')}"
   end
 
   def test_lag_accepts_custom_offset
@@ -203,7 +220,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "LEAD("
     assert_includes sql, "salary"
-    assert_includes sql, "AS next_salary"
+    assert_includes sql, "AS #{q('next_salary')}"
   end
 
   def test_lead_accepts_custom_offset_and_default
@@ -225,7 +242,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "FIRST_VALUE("
     assert_includes sql, "name"
-    assert_includes sql, "AS lowest_paid"
+    assert_includes sql, "AS #{q('lowest_paid')}"
   end
 
   def test_first_value_returns_correct_value
@@ -242,7 +259,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "LAST_VALUE("
     assert_includes sql, "name"
-    assert_includes sql, "AS lv"
+    assert_includes sql, "AS #{q('lv')}"
   end
 
   # Nth value
@@ -252,7 +269,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "NTH_VALUE("
     assert_includes sql, "name"
-    assert_includes sql, "AS second"
+    assert_includes sql, "AS #{q('second')}"
   end
 
   # Window sum
@@ -263,7 +280,7 @@ class QueryMethodsTest < Minitest::Test
     assert_includes sql, "SUM("
     assert_includes sql, "salary"
     assert_includes sql, "OVER"
-    assert_includes sql, "AS dept_total"
+    assert_includes sql, "AS #{q('dept_total')}"
   end
 
   def test_window_sum_computes_correct_partition_sums
@@ -280,7 +297,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "AVG("
     assert_includes sql, "salary"
-    assert_includes sql, "AS dept_avg"
+    assert_includes sql, "AS #{q('dept_avg')}"
   end
 
   def test_window_avg_computes_correct_partition_averages
@@ -296,7 +313,7 @@ class QueryMethodsTest < Minitest::Test
     sql = User.window_count(:id).partition_by(:department).as(:dept_count).to_sql
 
     assert_includes sql, "COUNT("
-    assert_includes sql, "AS dept_count"
+    assert_includes sql, "AS #{q('dept_count')}"
   end
 
   def test_window_count_counts_correctly_per_partition
@@ -320,7 +337,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "MIN("
     assert_includes sql, "salary"
-    assert_includes sql, "AS min_salary"
+    assert_includes sql, "AS #{q('min_salary')}"
   end
 
   def test_window_min_returns_correct_minimum
@@ -337,7 +354,7 @@ class QueryMethodsTest < Minitest::Test
 
     assert_includes sql, "MAX("
     assert_includes sql, "salary"
-    assert_includes sql, "AS max_salary"
+    assert_includes sql, "AS #{q('max_salary')}"
   end
 
   def test_window_max_returns_correct_maximum
@@ -385,26 +402,26 @@ class QueryMethodsTest < Minitest::Test
     sql = User.row_number.partition_by(:department).order(salary: :desc).as(:rn).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
-    assert_includes sql, '"users"."salary" DESC'
+    assert_includes sql, "#{col('salary')} DESC"
   end
 
   def test_order_asc_with_hash_in_fluent_api
     sql = User.row_number.order(salary: :asc).as(:rn).to_sql
 
-    assert_includes sql, '"users"."salary" ASC'
+    assert_includes sql, "#{col('salary')} ASC"
   end
 
   def test_order_desc_with_hash_api
     sql = User.window(row_number: { order: { salary: :desc }, as: :rn }).to_sql
 
-    assert_includes sql, '"users"."salary" DESC'
+    assert_includes sql, "#{col('salary')} DESC"
   end
 
   def test_order_mixed_directions
     sql = User.row_number.order({ department: :asc }, { salary: :desc }).as(:rn).to_sql
 
-    assert_includes sql, '"users"."department" ASC'
-    assert_includes sql, '"users"."salary" DESC'
+    assert_includes sql, "#{col('department')} ASC"
+    assert_includes sql, "#{col('salary')} DESC"
   end
 
   def test_order_desc_produces_correct_results
@@ -447,9 +464,9 @@ class QueryMethodsTest < Minitest::Test
     ).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
-    assert_includes sql, "AS rn"
+    assert_includes sql, "AS #{q('rn')}"
     assert_includes sql, "RANK()"
-    assert_includes sql, "AS salary_rank"
+    assert_includes sql, "AS #{q('salary_rank')}"
   end
 
   def test_multiple_window_functions_return_correct_results

@@ -149,10 +149,12 @@ module ActiveWindows
 
       expressions = extract_window_value(options[:value])
 
+      alias_name = klass.connection.quote_column_name((options[:as] || name).to_s)
+
       Arel::Nodes::NamedFunction.new(
         name.to_s.upcase,
         expressions
-      ).over(window).as((options[:as] || name).to_s)
+      ).over(window).as(alias_name)
     end
 
     def apply_window_partition(window, partition)

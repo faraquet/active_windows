@@ -2,7 +2,7 @@
 
 ## Overall Assessment
 
-The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core functionality is implemented and tested, with 16 window functions available via both fluent and hash APIs. 53 tests passing with 242 assertions.
+The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core functionality is implemented and tested, with 16 window functions available via both fluent and hash APIs. 67 tests passing with 328 assertions. CI runs against SQLite, PostgreSQL, and MySQL.
 
 ---
 
@@ -31,6 +31,9 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 - ~~**Cross-platform lockfile**~~ — Fixed. Added `aarch64-linux`, `arm-linux`, `arm64-darwin`, `x86_64-darwin`, `x86_64-linux` platforms.
 - ~~**Multiple window functions in one call**~~ — Tested. Single `window()` with multiple keys and chaining separate `window()` calls both work.
 - ~~**Edge case tests**~~ — Added. Empty result sets, single-row partitions, NULL values in partition/order/value columns, chaining with `.joins()`, `.includes()`, `.where()` + `.joins()`. 67 tests, 328 assertions.
+- ~~**PostgreSQL CI**~~ — Added. GitHub Actions workflow tests against PostgreSQL 17 with service container.
+- ~~**MySQL CI**~~ — Added. GitHub Actions workflow tests against MySQL 8.0 with service container.
+- ~~**MySQL compatibility**~~ — Fixed. Aliases now use `klass.connection.quote_column_name` to properly quote reserved words (e.g., `rank`) with backticks on MySQL and double quotes on PostgreSQL/SQLite. Test assertions use adapter-agnostic `q()` and `col()` helpers.
 
 ---
 
@@ -42,6 +45,4 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 
 2. **GitHub Actions for gem publishing** — No automated release workflow.
 
-3. **PostgreSQL test coverage** — SQLite has limited window function support. Testing against PostgreSQL would catch more issues.
-
-4. **Input validation on function arguments** — `lag`, `lead`, `ntile`, `nth_value` accept arbitrary values without type checking (e.g., `ntile("abc")` won't raise until query execution).
+3. **Input validation on function arguments** — `lag`, `lead`, `ntile`, `nth_value` accept arbitrary values without type checking (e.g., `ntile("abc")` won't raise until query execution).
