@@ -167,10 +167,16 @@ module ActiveWindows
     def apply_window_order(window, order)
       return unless order
 
+      # When order is a Hash like { salary: :desc }, pass it directly to arel_order
+      if order.is_a?(Hash)
+        window.order(*arel_order(order))
+        return
+      end
+
       columns = Array(order)
       return if columns.empty?
 
-      window.order(*columns.map { |o| arel_column(o) })
+      window.order(*columns.flat_map { |o| arel_order(o) })
     end
 
     def apply_window_frame(window, frame)
@@ -197,6 +203,20 @@ module ActiveWindows
         name
       else
         klass.arel_table[name.to_sym]
+      end
+    end
+
+    def arel_order(expr)
+      case expr
+      when Arel::Nodes::Node, Arel::Nodes::SqlLiteral
+        [expr]
+      when Hash
+        expr.map do |col, dir|
+          node = arel_column(col)
+          dir.to_s.downcase == "desc" ? node.desc : node.asc
+        end
+      else
+        [arel_column(expr)]
       end
     end
 

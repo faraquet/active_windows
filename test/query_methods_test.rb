@@ -378,6 +378,49 @@ class QueryMethodsTest < Minitest::Test
     results.each { |u| assert_includes u.attributes.keys, "dept_rank" }
   end
 
+  # Ordering direction
+
+  def test_order_desc_with_hash_in_fluent_api
+    sql = User.row_number.partition_by(:department).order(salary: :desc).as(:rn).to_sql
+
+    assert_includes sql, "ROW_NUMBER()"
+    assert_includes sql, '"users"."salary" DESC'
+  end
+
+  def test_order_asc_with_hash_in_fluent_api
+    sql = User.row_number.order(salary: :asc).as(:rn).to_sql
+
+    assert_includes sql, '"users"."salary" ASC'
+  end
+
+  def test_order_desc_with_hash_api
+    sql = User.window(row_number: { order: { salary: :desc }, as: :rn }).to_sql
+
+    assert_includes sql, '"users"."salary" DESC'
+  end
+
+  def test_order_mixed_directions
+    sql = User.row_number.order({ department: :asc }, { salary: :desc }).as(:rn).to_sql
+
+    assert_includes sql, '"users"."department" ASC'
+    assert_includes sql, '"users"."salary" DESC'
+  end
+
+  def test_order_desc_produces_correct_results
+    results = User.row_number.partition_by(:department).order(salary: :desc).as(:rn).to_a
+    eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.attributes["rn"].to_i }
+
+    assert_equal %w[Bob Alice], eng.map(&:name)
+    assert_equal [1, 2], eng.map { |u| u.attributes["rn"].to_i }
+  end
+
+  def test_order_symbol_still_defaults_to_asc
+    results = User.row_number.partition_by(:department).order(:salary).as(:rn).to_a
+    eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.attributes["rn"].to_i }
+
+    assert_equal %w[Alice Bob], eng.map(&:name)
+  end
+
   # Chaining with ActiveRecord
 
   def test_chains_with_where

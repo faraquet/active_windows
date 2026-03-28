@@ -126,7 +126,15 @@ GEM
     net-smtp (0.5.1)
       net-protocol
     nio4r (2.7.5)
+    nokogiri (1.19.2-aarch64-linux-gnu)
+      racc (~> 1.4)
+    nokogiri (1.19.2-arm-linux-gnu)
+      racc (~> 1.4)
     nokogiri (1.19.2-arm64-darwin)
+      racc (~> 1.4)
+    nokogiri (1.19.2-x86_64-darwin)
+      racc (~> 1.4)
+    nokogiri (1.19.2-x86_64-linux-gnu)
       racc (~> 1.4)
     pp (0.6.3)
       prettyprint
@@ -182,7 +190,11 @@ GEM
     reline (0.6.3)
       io-console (~> 0.5)
     securerandom (0.4.1)
+    sqlite3 (2.9.2-aarch64-linux-gnu)
+    sqlite3 (2.9.2-arm-linux-gnu)
     sqlite3 (2.9.2-arm64-darwin)
+    sqlite3 (2.9.2-x86_64-darwin)
+    sqlite3 (2.9.2-x86_64-linux-gnu)
     stringio (3.2.0)
     thor (1.5.0)
     timeout (0.6.1)
@@ -198,15 +210,20 @@ GEM
     zeitwerk (2.7.5)
 
 PLATFORMS
+  aarch64-linux
+  arm-linux
+  arm64-darwin
   arm64-darwin-24
   arm64-darwin-25
+  x86_64-darwin
+  x86_64-linux
 
 DEPENDENCIES
   active_windows!
   bundler (>= 2.0)
-  minitest (~> 5.0)
+  minitest
   rails (>= 8.0)
-  rake (~> 13.0)
+  rake
   sqlite3 (>= 2.1)
 
 BUNDLED WITH

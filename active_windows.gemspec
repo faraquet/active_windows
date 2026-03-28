@@ -35,8 +35,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "activesupport", ">= 8.0"
 
   spec.add_development_dependency "bundler", ">= 2.0"
-  spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rails", ">= 8.0"
-  spec.add_development_dependency "minitest", "~> 5.0"
   spec.add_development_dependency "sqlite3", ">= 2.1"
 end
