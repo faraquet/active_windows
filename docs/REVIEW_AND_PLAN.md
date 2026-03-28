@@ -29,25 +29,19 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 - ~~**Ordering direction**~~ — Fixed. Supports `order(salary: :desc)`, `order({ col: :asc }, { col: :desc })`, and hash API `order: { salary: :desc }`.
 - ~~**Gemfile/gemspec duplication**~~ — Fixed. Dev gems (`minitest`, `rake`) defined only in Gemfile under `test, development` group. No more bundler override warnings.
 - ~~**Cross-platform lockfile**~~ — Fixed. Added `aarch64-linux`, `arm-linux`, `arm64-darwin`, `x86_64-darwin`, `x86_64-linux` platforms.
-- ~~**Multiple window functions in one call**~~ — Tested. Single `window()` with multiple keys and chaining separate `window()` calls both work. 57 tests, 287 assertions.
+- ~~**Multiple window functions in one call**~~ — Tested. Single `window()` with multiple keys and chaining separate `window()` calls both work.
+- ~~**Edge case tests**~~ — Added. Empty result sets, single-row partitions, NULL values in partition/order/value columns, chaining with `.joins()`, `.includes()`, `.where()` + `.joins()`. 67 tests, 328 assertions.
 
 ---
 
 ## Remaining Work
 
-### Medium Priority
-
-1. **Edge case tests** — Not yet covered:
-   - Empty result sets, single-row partitions
-   - NULL values in partition/order columns
-   - Complex chaining with `.joins()`, `.group()`, `.includes()`
-
 ### Low Priority
 
-3. **RBS type signatures** — Add method signatures for `QueryMethods` and `WindowChain`.
+1. **RBS type signatures** — Add method signatures for `QueryMethods` and `WindowChain`.
 
-4. **GitHub Actions for gem publishing** — No automated release workflow.
+2. **GitHub Actions for gem publishing** — No automated release workflow.
 
-5. **PostgreSQL test coverage** — SQLite has limited window function support. Testing against PostgreSQL would catch more issues.
+3. **PostgreSQL test coverage** — SQLite has limited window function support. Testing against PostgreSQL would catch more issues.
 
-6. **Input validation on function arguments** — `lag`, `lead`, `ntile`, `nth_value` accept arbitrary values without type checking (e.g., `ntile("abc")` won't raise until query execution).
+4. **Input validation on function arguments** — `lag`, `lead`, `ntile`, `nth_value` accept arbitrary values without type checking (e.g., `ntile("abc")` won't raise until query execution).
