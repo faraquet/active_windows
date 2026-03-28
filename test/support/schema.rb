@@ -11,7 +11,6 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
-  # Add indexes for better performance in window function tests
   add_index :users, :department
   add_index :users, :hire_date
 end
