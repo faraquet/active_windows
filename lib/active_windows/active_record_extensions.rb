@@ -13,6 +13,7 @@ module ActiveWindows
       @alias_name = nil
       @partition_columns = []
       @order_columns = []
+      @frame = nil
     end
 
     def as(name)
@@ -30,10 +31,16 @@ module ActiveWindows
       self
     end
 
+    def frame(value)
+      @frame = value
+      self
+    end
+
     def to_window_hash
       options = {}
       options[:partition_by] = @partition_columns unless @partition_columns.empty?
       options[:order_by] = @order_columns unless @order_columns.empty?
+      options[:frame] = @frame if @frame
       options[:as] = @alias_name if @alias_name
       options[:value] = @function_args unless @function_args.empty?
       { @function => options }
@@ -133,10 +140,66 @@ module ActiveWindows
       window.order(*columns.flat_map { |o| arel_order(o) })
     end
 
-    def apply_window_frame(window, frame)
-      return unless frame.is_a?(String)
+    VALID_FRAME_TYPES = %i[rows range].freeze
+    VALID_FRAME_BOUNDS = %i[
+      unbounded_preceding unbounded_following current_row
+    ].freeze
 
-      window.frame(Arel.sql(frame))
+    def apply_window_frame(window, frame)
+      case frame
+      when String
+        window.frame(Arel.sql(frame))
+      when Hash
+        window.frame(build_frame(frame))
+      end
+    end
+
+    def build_frame(frame_hash)
+      type, bounds = frame_hash.first
+
+      unless VALID_FRAME_TYPES.include?(type)
+        raise ArgumentError, "Invalid frame type: #{type}. Use :rows or :range"
+      end
+
+      bounds = Array(bounds)
+
+      frame_class = type == :rows ? Arel::Nodes::Rows : Arel::Nodes::Range
+
+      if bounds.length == 1
+        # Single bound: ROWS <bound>
+        frame_class.new(build_frame_bound(bounds[0]))
+      else
+        # BETWEEN: ROWS BETWEEN <start> AND <end>
+        # Arel doesn't support BETWEEN frames natively, so we build SQL
+        start_sql = frame_bound_sql(bounds[0])
+        end_sql = frame_bound_sql(bounds[1])
+        type_sql = type.to_s.upcase
+        Arel.sql("#{type_sql} BETWEEN #{start_sql} AND #{end_sql}")
+      end
+    end
+
+    def build_frame_bound(bound)
+      case bound
+      when :current_row         then Arel::Nodes::CurrentRow.new
+      when :unbounded_preceding then Arel::Nodes::Preceding.new
+      when :unbounded_following then Arel::Nodes::Following.new
+      when Integer
+        bound >= 0 ? Arel::Nodes::Preceding.new(bound) : Arel::Nodes::Following.new(bound.abs)
+      else
+        raise ArgumentError, "Invalid frame bound: #{bound}"
+      end
+    end
+
+    def frame_bound_sql(bound)
+      case bound
+      when :current_row         then "CURRENT ROW"
+      when :unbounded_preceding then "UNBOUNDED PRECEDING"
+      when :unbounded_following then "UNBOUNDED FOLLOWING"
+      when Integer
+        bound >= 0 ? "#{bound} PRECEDING" : "#{bound.abs} FOLLOWING"
+      else
+        raise ArgumentError, "Invalid frame bound: #{bound}"
+      end
     end
 
     def extract_window_value(value)

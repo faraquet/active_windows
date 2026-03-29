@@ -224,16 +224,44 @@ Options on the function (like `order_by:`) are merged with the named definition,
 
 ### Window Frames
 
-Pass a raw SQL frame clause via the hash API:
+Use a hash DSL to define frame clauses:
 
 ```ruby
+# ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 User.window(sum: {
   value: :salary,
   partition_by: :department,
   order_by: :hire_date,
-  frame: "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW",
+  frame: { rows: [:unbounded_preceding, :current_row] },
   as: :running_total
 })
+
+# ROWS BETWEEN 3 PRECEDING AND 1 FOLLOWING
+frame: { rows: [3, -1] }
+
+# RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+frame: { range: [:unbounded_preceding, :unbounded_following] }
+
+# Single bound: ROWS UNBOUNDED PRECEDING
+frame: { rows: :unbounded_preceding }
+```
+
+Available bounds: `:unbounded_preceding`, `:unbounded_following`, `:current_row`, or an integer (positive = PRECEDING, negative = FOLLOWING).
+
+Fluent API:
+
+```ruby
+User.window(:sum, :salary)
+    .partition_by(:department)
+    .order_by(:hire_date)
+    .frame(rows: [:unbounded_preceding, :current_row])
+    .as(:running_total)
+```
+
+Raw SQL strings are also accepted:
+
+```ruby
+frame: "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
 ```
 
 ## Examples

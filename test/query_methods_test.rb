@@ -524,6 +524,114 @@ class QueryMethodsTest < Minitest::Test
     end
   end
 
+  # Frame DSL
+
+  def test_frame_hash_rows_between
+    sql = User.window(sum: {
+      value: :salary,
+      partition_by: :department,
+      order_by: :hire_date,
+      frame: { rows: [:unbounded_preceding, :current_row] },
+      as: :running_total
+    }).to_sql
+
+    assert_includes sql, "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+  end
+
+  def test_frame_hash_rows_between_with_offsets
+    sql = User.window(sum: {
+      value: :salary,
+      order_by: :hire_date,
+      frame: { rows: [3, -1] },
+      as: :running_total
+    }).to_sql
+
+    assert_includes sql, "ROWS BETWEEN 3 PRECEDING AND 1 FOLLOWING"
+  end
+
+  def test_frame_hash_range_unbounded
+    sql = User.window(sum: {
+      value: :salary,
+      partition_by: :department,
+      frame: { range: [:unbounded_preceding, :unbounded_following] },
+      as: :dept_total
+    }).to_sql
+
+    assert_includes sql, "RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING"
+  end
+
+  def test_frame_hash_single_bound
+    sql = User.window(sum: {
+      value: :salary,
+      order_by: :salary,
+      frame: { rows: :current_row },
+      as: :just_me
+    }).to_sql
+
+    assert_includes sql, "ROWS CURRENT ROW"
+  end
+
+  def test_frame_hash_single_bound_preceding
+    sql = User.window(sum: {
+      value: :salary,
+      order_by: :salary,
+      frame: { rows: :unbounded_preceding },
+      as: :running
+    }).to_sql
+
+    assert_includes sql, "ROWS UNBOUNDED PRECEDING"
+  end
+
+  def test_frame_raw_string_still_works
+    sql = User.window(sum: {
+      value: :salary,
+      order_by: :hire_date,
+      frame: "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW",
+      as: :running_total
+    }).to_sql
+
+    assert_includes sql, "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+  end
+
+  def test_frame_in_fluent_api
+    sql = User.window(:sum, :salary)
+              .partition_by(:department)
+              .order_by(:hire_date)
+              .frame(rows: [:unbounded_preceding, :current_row])
+              .as(:running_total)
+              .to_sql
+
+    assert_includes sql, "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+  end
+
+  def test_frame_produces_correct_running_total
+    results = User.window(sum: {
+      value: :salary,
+      partition_by: :department,
+      order_by: :salary,
+      frame: { rows: [:unbounded_preceding, :current_row] },
+      as: :running_total
+    }).to_a
+    eng = results.select { |u| u.department == "Engineering" }.sort_by(&:salary)
+
+    assert_equal 80_000, eng[0].attributes["running_total"].to_i
+    assert_equal 170_000, eng[1].attributes["running_total"].to_i
+  end
+
+  def test_frame_raises_on_invalid_type
+    error = assert_raises(ArgumentError) do
+      User.window(sum: { value: :salary, frame: { groups: [:current_row] }, as: :x })
+    end
+    assert_match(/Invalid frame type/, error.message)
+  end
+
+  def test_frame_raises_on_invalid_bound
+    error = assert_raises(ArgumentError) do
+      User.window(sum: { value: :salary, frame: { rows: [:bogus] }, as: :x })
+    end
+    assert_match(/Invalid frame bound/, error.message)
+  end
+
   # Named windows (define/over)
 
   def test_named_window_generates_correct_sql

@@ -37,7 +37,8 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 - ~~**WindowChain `order` naming collision**~~ — Fixed. Renamed to `order_by` to avoid conflict with ActiveRecord's `.order()`. Both fluent (`.order_by(:salary)`) and hash (`order_by: :salary`) APIs use `order_by`. WindowChain delegates `.order()` to the relation for query-level ordering. Uses `method_missing` for full relation method coverage.
 - ~~**Association name resolution**~~ — Added. `belongs_to`: `partition_by(:user)` resolves to `user_id`. Works in both fluent and hash APIs.
 - ~~**Unified `window()` entry point**~~ — Added. `window(:row_number)` returns a WindowChain (fluent), `window(:lag, :salary, 1, 0)` passes function args, `window(row_number: { ... })` is hash API. Single method, three modes.
-- ~~**Named windows**~~ — Added. `define: { w: { partition_by: :department, order_by: :salary } }` with `over: :w` references. Multiple definitions supported. Function-level options merge with the definition. 83 tests, 407 assertions.
+- ~~**Named windows**~~ — Added. `define: { w: { partition_by: :department, order_by: :salary } }` with `over: :w` references. Multiple definitions supported. Function-level options merge with the definition.
+- ~~**Frame clause is raw SQL**~~ — Fixed. Hash DSL for frames: `frame: { rows: [:unbounded_preceding, :current_row] }`. Supports `:rows`/`:range`, integer offsets, and all standard bounds. Raw SQL strings still accepted as fallback. 93 tests, 429 assertions.
 
 ---
 
