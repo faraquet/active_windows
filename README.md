@@ -110,6 +110,16 @@ User.row_number.partition_by(:profile).order_by(:salary).as(:rn)
 User.joins(:profile).row_number.partition_by("profiles.id").order_by(:salary).as(:rn)
 ```
 
+**`has_many`** — not supported. Joining a `has_many` multiplies rows, which would silently corrupt window function results. Aggregate manually instead:
+
+```ruby
+# Instead of partition_by(:orders), aggregate first:
+User.joins(:orders)
+    .group(:id)
+    .select("users.*, SUM(orders.amount) AS total_spent")
+    .window(rank: { order_by: "total_spent", as: :spending_rank })
+```
+
 ### Chaining with ActiveRecord
 
 Window functions integrate naturally with standard ActiveRecord methods:
