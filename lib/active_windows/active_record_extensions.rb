@@ -65,7 +65,7 @@ module ActiveWindows
   end
 
   module QueryMethods
-    VALID_WINDOW_OPTIONS = %i[value partition_by order_by frame as].freeze
+    VALID_WINDOW_OPTIONS = %i[value partition_by order_by frame as over].freeze
 
     # Fluent: window(:row_number) returns a WindowChain
     # Fluent with args: window(:lag, :salary, 1, 0) returns a WindowChain
@@ -187,16 +187,37 @@ module ActiveWindows
     end
 
     def process_window_args(args)
+      # First pass: collect named window definitions from define: key
+      definitions = {}
+      args.each do |element|
+        next unless element.is_a?(Hash) && element.key?(:define)
+
+        element[:define].each do |name, opts|
+          definitions[name] = opts
+        end
+      end
+
+      # Second pass: build function list, resolving over: references
       args.flat_map do |element|
         case element
         when Hash
-          element.each_value do |v|
-            next unless v.is_a?(Hash)
+          element.except(:define).map do |k, v|
+            next [k, v] unless v.is_a?(Hash)
+
+            # Resolve over: reference to a named window definition
+            if v.key?(:over)
+              window_name = v[:over]
+              definition = definitions[window_name]
+              raise ArgumentError, "Unknown window definition: #{window_name}" unless definition
+
+              v = definition.merge(v.except(:over))
+            end
 
             unsupported = v.keys - VALID_WINDOW_OPTIONS
             raise ArgumentError, "Unsupported window options: #{unsupported.join(', ')}" unless unsupported.empty?
-          end
-          element.map { |k, v| [k, v] }
+
+            [k, v]
+          end.compact
         when WindowChain
           [element.to_window_hash.first]
         else

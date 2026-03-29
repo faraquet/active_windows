@@ -524,6 +524,86 @@ class QueryMethodsTest < Minitest::Test
     end
   end
 
+  # Named windows (define/over)
+
+  def test_named_window_generates_correct_sql
+    sql = User.window(
+      define: { w: { partition_by: :department, order_by: :salary } },
+      row_number: { over: :w, as: :rn },
+      rank: { over: :w, as: :salary_rank }
+    ).to_sql
+
+    assert_includes sql, "ROW_NUMBER()"
+    assert_includes sql, "RANK()"
+    assert_includes sql, col("department")
+    assert_includes sql, col("salary")
+    assert_includes sql, "AS #{q('rn')}"
+    assert_includes sql, "AS #{q('salary_rank')}"
+  end
+
+  def test_named_window_produces_correct_results
+    results = User.window(
+      define: { w: { partition_by: :department, order_by: :salary } },
+      row_number: { over: :w, as: :rn },
+      rank: { over: :w, as: :salary_rank }
+    )
+
+    assert_equal 4, results.length
+    results.each do |user|
+      assert_includes user.attributes.keys, "rn"
+      assert_includes user.attributes.keys, "salary_rank"
+    end
+  end
+
+  def test_named_window_with_value_function
+    results = User.window(
+      define: { w: { partition_by: :department } },
+      row_number: { over: :w, order_by: :salary, as: :rn },
+      sum: { value: :salary, over: :w, as: :dept_total }
+    )
+    eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.attributes["rn"].to_i }
+
+    assert_equal [1, 2], eng.map { |u| u.attributes["rn"].to_i }
+    eng.each { |u| assert_equal 170_000, u.attributes["dept_total"].to_i }
+  end
+
+  def test_named_window_with_multiple_definitions
+    sql = User.window(
+      define: {
+        by_dept: { partition_by: :department, order_by: :salary },
+        global: { order_by: :salary }
+      },
+      row_number: { over: :by_dept, as: :dept_rn },
+      rank: { over: :global, as: :global_rank }
+    ).to_sql
+
+    assert_includes sql, "ROW_NUMBER()"
+    assert_includes sql, "RANK()"
+    assert_includes sql, "PARTITION BY"
+    assert_includes sql, "AS #{q('dept_rn')}"
+    assert_includes sql, "AS #{q('global_rank')}"
+  end
+
+  def test_named_window_over_can_be_extended
+    sql = User.window(
+      define: { w: { partition_by: :department } },
+      row_number: { over: :w, order_by: :salary, as: :rn }
+    ).to_sql
+
+    assert_includes sql, "PARTITION BY"
+    assert_includes sql, col("salary")
+    assert_includes sql, "AS #{q('rn')}"
+  end
+
+  def test_named_window_raises_on_unknown_reference
+    error = assert_raises(ArgumentError) do
+      User.window(
+        row_number: { over: :nonexistent, as: :rn }
+      )
+    end
+    assert_match(/Unknown window definition: nonexistent/, error.message)
+  end
+
   # Window order_by vs ActiveRecord order
 
   def test_order_by_sets_window_order_and_ar_order_sets_query_order

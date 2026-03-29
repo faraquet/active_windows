@@ -80,6 +80,7 @@ Available options:
 | `:as` | `Symbol` | Alias for the result column |
 | `:frame` | `String` | Raw SQL frame clause (e.g. `"ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING"`) |
 | `:value` | `Symbol`, `String`, `Array` | Expression(s) passed as function arguments |
+| `:over` | `Symbol` | Reference to a named window defined via `define:` |
 
 ### Association Names
 
@@ -192,6 +193,34 @@ User.window(:min, :salary).partition_by(:department).as(:min_salary)
 # MAX(column) OVER(...)
 User.window(:max, :salary).partition_by(:department).as(:max_salary)
 ```
+
+### Named Windows
+
+Define a window once and reuse it across multiple functions with `define:` and `over:`:
+
+```ruby
+User.window(
+  define: { w: { partition_by: :department, order_by: :salary } },
+  row_number: { over: :w, as: :rn },
+  rank:       { over: :w, as: :salary_rank },
+  sum:        { value: :salary, over: :w, as: :running_total }
+)
+```
+
+You can define multiple windows and extend them per-function:
+
+```ruby
+User.window(
+  define: {
+    by_dept:  { partition_by: :department },
+    globally: { order_by: :salary }
+  },
+  row_number: { over: :by_dept, order_by: :salary, as: :dept_rn },
+  rank:       { over: :globally, as: :global_rank }
+)
+```
+
+Options on the function (like `order_by:`) are merged with the named definition, so you can share the common parts and specialize per-function.
 
 ### Window Frames
 
