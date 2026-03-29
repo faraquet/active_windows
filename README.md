@@ -86,7 +86,9 @@ Available options:
 
 ### Association Names
 
-You can use `belongs_to` association names instead of foreign key columns. ActiveWindows automatically resolves them:
+You can use association names instead of raw column names. ActiveWindows automatically resolves them:
+
+**`belongs_to`** — resolves to the foreign key on the current table:
 
 ```ruby
 # These are equivalent:
@@ -95,6 +97,17 @@ Order.row_number.partition_by(:user_id).window_order(:amount).as(:rn)
 
 # Works in the hash API too:
 Order.window(row_number: { partition: :user, order: :amount, as: :rn })
+```
+
+**`has_one`** — auto-joins the associated table and references its primary key:
+
+```ruby
+# User has_one :profile
+# Automatically joins profiles and partitions by profiles.id
+User.row_number.partition_by(:profile).window_order(:salary).as(:rn)
+
+# Equivalent to:
+User.joins(:profile).row_number.partition_by("profiles.id").window_order(:salary).as(:rn)
 ```
 
 ### Chaining with ActiveRecord
