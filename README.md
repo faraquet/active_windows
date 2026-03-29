@@ -1,3 +1,5 @@
+[![Gem Version](https://badge.fury.io/rb/active_windows.svg)](https://badge.fury.io/rb/active_windows)
+
 # ActiveWindows
 
 A Ruby DSL for SQL window functions in ActiveRecord. Write expressive window function queries using a fluent, chainable interface instead of raw SQL.
