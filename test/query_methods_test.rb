@@ -31,16 +31,14 @@ class QueryMethodsTest < Minitest::Test
 
   # Class-level delegation
 
-  def test_delegates_all_window_function_methods
-    ActiveWindows::QUERY_METHODS.each do |method|
-      assert_respond_to User, method
-    end
+  def test_delegates_window_method
+    assert_respond_to User, :window
   end
 
   # Hash API
 
   def test_window_generates_row_number_sql
-    sql = User.window(row_number: { partition: :department, order_by: :salary, as: :rank }).to_sql
+    sql = User.window(row_number: { partition_by: :department, order_by: :salary, as: :rank }).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
     assert_includes sql, "OVER"
@@ -74,7 +72,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_window_with_multiple_partition_columns
-    sql = User.window(row_number: { partition: [:department, :active], order_by: :salary, as: :rn }).to_sql
+    sql = User.window(row_number: { partition_by: [:department, :active], order_by: :salary, as: :rn }).to_sql
 
     assert_includes sql, col("department")
     assert_includes sql, col("active")
@@ -82,7 +80,7 @@ class QueryMethodsTest < Minitest::Test
 
   def test_window_raises_on_unsupported_options
     error = assert_raises(ArgumentError) do
-      User.window(row_number: { partition: :department, bogus: true })
+      User.window(row_number: { partition_by: :department, bogus: true })
     end
     assert_match(/Unsupported window options.*bogus/, error.message)
   end
@@ -91,10 +89,10 @@ class QueryMethodsTest < Minitest::Test
     assert_raises(ArgumentError) { User.window }
   end
 
-  # Fluent API - row_number
+  # Fluent API via window(:symbol)
 
-  def test_row_number_fluent_generates_correct_sql
-    sql = User.row_number.partition_by(:department).order_by(:salary).as(:rank).to_sql
+  def test_window_symbol_returns_chain
+    sql = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rank).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
     assert_includes sql, col("department")
@@ -102,15 +100,37 @@ class QueryMethodsTest < Minitest::Test
     assert_includes sql, "AS #{q('rank')}"
   end
 
-  def test_row_number_with_just_order
-    sql = User.row_number.order_by(:salary).as(:rn).to_sql
+  def test_window_symbol_with_function_args
+    sql = User.window(:lag, :salary, 1, 0).order_by(:hire_date).as(:prev_salary).to_sql
+
+    assert_includes sql, "LAG("
+    assert_includes sql, "AS #{q('prev_salary')}"
+  end
+
+  def test_window_symbol_ntile
+    results = User.window(:ntile, 2).order_by(:salary).as(:half).to_a
+    halves = results.map { |u| u.attributes["half"].to_i }
+
+    assert_includes halves, 1
+    assert_includes halves, 2
+  end
+
+  def test_window_symbol_executes_correctly
+    results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn).to_a
+
+    assert_equal 4, results.length
+    results.each { |u| assert_includes u.attributes.keys, "rn" }
+  end
+
+  def test_window_row_number_with_just_order
+    sql = User.window(:row_number).order_by(:salary).as(:rn).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
     assert_includes sql, col("salary")
   end
 
-  def test_row_number_with_just_as
-    sql = User.row_number.as(:rn).to_sql
+  def test_window_row_number_with_just_as
+    sql = User.window(:row_number).as(:rn).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
     assert_includes sql, "AS #{q('rn')}"
@@ -119,7 +139,7 @@ class QueryMethodsTest < Minitest::Test
   # Rank
 
   def test_rank_generates_sql
-    sql = User.rank.partition_by(:department).order_by(:salary).as(:salary_rank).to_sql
+    sql = User.window(:rank).partition_by(:department).order_by(:salary).as(:salary_rank).to_sql
 
     assert_includes sql, "RANK()"
     assert_includes sql, "PARTITION BY"
@@ -127,7 +147,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_rank_computes_correct_values
-    results = User.window(rank: { partition: :department, order_by: :salary, as: :salary_rank })
+    results = User.window(rank: { partition_by: :department, order_by: :salary, as: :salary_rank })
     eng = results.select { |u| u.department == "Engineering" }.sort_by(&:salary)
 
     assert_equal [1, 2], eng.map { |u| u.attributes["salary_rank"].to_i }
@@ -136,14 +156,14 @@ class QueryMethodsTest < Minitest::Test
   # Dense rank
 
   def test_dense_rank_generates_sql
-    sql = User.dense_rank.partition_by(:department).order_by(:salary).as(:dr).to_sql
+    sql = User.window(:dense_rank).partition_by(:department).order_by(:salary).as(:dr).to_sql
 
     assert_includes sql, "DENSE_RANK()"
     assert_includes sql, "AS #{q('dr')}"
   end
 
   def test_dense_rank_executes_and_returns_results
-    results = User.dense_rank.partition_by(:department).order_by(:salary).as(:dr).to_a
+    results = User.window(:dense_rank).partition_by(:department).order_by(:salary).as(:dr).to_a
 
     assert_equal 4, results.length
     results.each { |u| assert_includes u.attributes.keys, "dr" }
@@ -152,7 +172,7 @@ class QueryMethodsTest < Minitest::Test
   # Percent rank
 
   def test_percent_rank_generates_sql
-    sql = User.percent_rank.order_by(:salary).as(:pr).to_sql
+    sql = User.window(:percent_rank).order_by(:salary).as(:pr).to_sql
 
     assert_includes sql, "PERCENT_RANK()"
     assert_includes sql, "AS #{q('pr')}"
@@ -161,7 +181,7 @@ class QueryMethodsTest < Minitest::Test
   # Cume dist
 
   def test_cume_dist_generates_sql
-    sql = User.cume_dist.order_by(:salary).as(:cd).to_sql
+    sql = User.window(:cume_dist).order_by(:salary).as(:cd).to_sql
 
     assert_includes sql, "CUME_DIST()"
     assert_includes sql, "AS #{q('cd')}"
@@ -170,14 +190,14 @@ class QueryMethodsTest < Minitest::Test
   # Ntile
 
   def test_ntile_generates_sql
-    sql = User.ntile(4).order_by(:salary).as(:quartile).to_sql
+    sql = User.window(:ntile, 4).order_by(:salary).as(:quartile).to_sql
 
     assert_includes sql, "NTILE("
     assert_includes sql, "AS #{q('quartile')}"
   end
 
   def test_ntile_assigns_correct_bucket_values
-    results = User.ntile(2).order_by(:salary).as(:half).to_a
+    results = User.window(:ntile, 2).order_by(:salary).as(:half).to_a
     halves = results.map { |u| u.attributes["half"].to_i }
 
     assert_includes halves, 1
@@ -187,7 +207,7 @@ class QueryMethodsTest < Minitest::Test
   # Lag
 
   def test_lag_generates_sql
-    sql = User.lag(:salary).order_by(:hire_date).as(:prev_salary).to_sql
+    sql = User.window(:lag, :salary).order_by(:hire_date).as(:prev_salary).to_sql
 
     assert_includes sql, "LAG("
     assert_includes sql, "salary"
@@ -195,19 +215,19 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_lag_accepts_custom_offset
-    sql = User.lag(:salary, 2).order_by(:hire_date).as(:prev2).to_sql
+    sql = User.window(:lag, :salary, 2).order_by(:hire_date).as(:prev2).to_sql
 
     assert_includes sql, "LAG("
   end
 
   def test_lag_accepts_default_value
-    sql = User.lag(:salary, 1, 0).order_by(:hire_date).as(:prev_salary).to_sql
+    sql = User.window(:lag, :salary, 1, 0).order_by(:hire_date).as(:prev_salary).to_sql
 
     assert_includes sql, "LAG("
   end
 
   def test_lag_executes_and_returns_results
-    results = User.lag(:salary).order_by(:hire_date).as(:prev_salary).to_a
+    results = User.window(:lag, :salary).order_by(:hire_date).as(:prev_salary).to_a
 
     assert_equal 4, results.length
     results.each { |u| assert_includes u.attributes.keys, "prev_salary" }
@@ -216,7 +236,7 @@ class QueryMethodsTest < Minitest::Test
   # Lead
 
   def test_lead_generates_sql
-    sql = User.lead(:salary).order_by(:hire_date).as(:next_salary).to_sql
+    sql = User.window(:lead, :salary).order_by(:hire_date).as(:next_salary).to_sql
 
     assert_includes sql, "LEAD("
     assert_includes sql, "salary"
@@ -224,13 +244,13 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_lead_accepts_custom_offset_and_default
-    sql = User.lead(:salary, 2, 0).order_by(:hire_date).as(:next2).to_sql
+    sql = User.window(:lead, :salary, 2, 0).order_by(:hire_date).as(:next2).to_sql
 
     assert_includes sql, "LEAD("
   end
 
   def test_lead_executes_and_returns_results
-    results = User.lead(:salary).order_by(:hire_date).as(:next_salary).to_a
+    results = User.window(:lead, :salary).order_by(:hire_date).as(:next_salary).to_a
 
     assert_equal 4, results.length
   end
@@ -238,7 +258,7 @@ class QueryMethodsTest < Minitest::Test
   # First value
 
   def test_first_value_generates_sql
-    sql = User.first_value(:name).partition_by(:department).order_by(:salary).as(:lowest_paid).to_sql
+    sql = User.window(:first_value, :name).partition_by(:department).order_by(:salary).as(:lowest_paid).to_sql
 
     assert_includes sql, "FIRST_VALUE("
     assert_includes sql, "name"
@@ -246,7 +266,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_first_value_returns_correct_value
-    results = User.first_value(:name).partition_by(:department).order_by(:salary).as(:lowest_paid).to_a
+    results = User.window(:first_value, :name).partition_by(:department).order_by(:salary).as(:lowest_paid).to_a
     eng = results.select { |u| u.department == "Engineering" }
 
     eng.each { |u| assert_equal "Alice", u.attributes["lowest_paid"] }
@@ -255,7 +275,7 @@ class QueryMethodsTest < Minitest::Test
   # Last value
 
   def test_last_value_generates_sql
-    sql = User.last_value(:name).partition_by(:department).order_by(:salary).as(:lv).to_sql
+    sql = User.window(:last_value, :name).partition_by(:department).order_by(:salary).as(:lv).to_sql
 
     assert_includes sql, "LAST_VALUE("
     assert_includes sql, "name"
@@ -265,7 +285,7 @@ class QueryMethodsTest < Minitest::Test
   # Nth value
 
   def test_nth_value_generates_sql
-    sql = User.nth_value(:name, 2).partition_by(:department).order_by(:salary).as(:second).to_sql
+    sql = User.window(:nth_value, :name, 2).partition_by(:department).order_by(:salary).as(:second).to_sql
 
     assert_includes sql, "NTH_VALUE("
     assert_includes sql, "name"
@@ -275,7 +295,7 @@ class QueryMethodsTest < Minitest::Test
   # Window sum
 
   def test_window_sum_generates_sql
-    sql = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_sql
+    sql = User.window(:sum, :salary).partition_by(:department).as(:dept_total).to_sql
 
     assert_includes sql, "SUM("
     assert_includes sql, "salary"
@@ -284,7 +304,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_window_sum_computes_correct_partition_sums
-    results = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_a
+    results = User.window(:sum, :salary).partition_by(:department).as(:dept_total).to_a
     eng = results.select { |u| u.department == "Engineering" }
 
     eng.each { |u| assert_equal 170_000, u.attributes["dept_total"].to_i }
@@ -293,7 +313,7 @@ class QueryMethodsTest < Minitest::Test
   # Window avg
 
   def test_window_avg_generates_sql
-    sql = User.window_avg(:salary).partition_by(:department).as(:dept_avg).to_sql
+    sql = User.window(:avg, :salary).partition_by(:department).as(:dept_avg).to_sql
 
     assert_includes sql, "AVG("
     assert_includes sql, "salary"
@@ -301,7 +321,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_window_avg_computes_correct_partition_averages
-    results = User.window_avg(:salary).partition_by(:department).as(:dept_avg).to_a
+    results = User.window(:avg, :salary).partition_by(:department).as(:dept_avg).to_a
     eng = results.select { |u| u.department == "Engineering" }
 
     eng.each { |u| assert_equal 85_000.0, u.attributes["dept_avg"].to_f }
@@ -310,21 +330,21 @@ class QueryMethodsTest < Minitest::Test
   # Window count
 
   def test_window_count_generates_sql
-    sql = User.window_count(:id).partition_by(:department).as(:dept_count).to_sql
+    sql = User.window(:count, :id).partition_by(:department).as(:dept_count).to_sql
 
     assert_includes sql, "COUNT("
     assert_includes sql, "AS #{q('dept_count')}"
   end
 
   def test_window_count_counts_correctly_per_partition
-    results = User.window_count(:id).partition_by(:department).as(:dept_count).to_a
+    results = User.window(:count, :id).partition_by(:department).as(:dept_count).to_a
     eng = results.select { |u| u.department == "Engineering" }
 
     eng.each { |u| assert_equal 2, u.attributes["dept_count"].to_i }
   end
 
   def test_window_count_defaults_to_star
-    sql = User.window_count.partition_by(:department).as(:cnt).to_sql
+    sql = User.window(:count, "*").partition_by(:department).as(:cnt).to_sql
 
     assert_includes sql, "COUNT("
     assert_includes sql, "*"
@@ -333,7 +353,7 @@ class QueryMethodsTest < Minitest::Test
   # Window min
 
   def test_window_min_generates_sql
-    sql = User.window_min(:salary).partition_by(:department).as(:min_salary).to_sql
+    sql = User.window(:min, :salary).partition_by(:department).as(:min_salary).to_sql
 
     assert_includes sql, "MIN("
     assert_includes sql, "salary"
@@ -341,7 +361,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_window_min_returns_correct_minimum
-    results = User.window_min(:salary).partition_by(:department).as(:min_salary).to_a
+    results = User.window(:min, :salary).partition_by(:department).as(:min_salary).to_a
     eng = results.select { |u| u.department == "Engineering" }
 
     eng.each { |u| assert_equal 80_000, u.attributes["min_salary"].to_i }
@@ -350,7 +370,7 @@ class QueryMethodsTest < Minitest::Test
   # Window max
 
   def test_window_max_generates_sql
-    sql = User.window_max(:salary).partition_by(:department).as(:max_salary).to_sql
+    sql = User.window(:max, :salary).partition_by(:department).as(:max_salary).to_sql
 
     assert_includes sql, "MAX("
     assert_includes sql, "salary"
@@ -358,7 +378,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_window_max_returns_correct_maximum
-    results = User.window_max(:salary).partition_by(:department).as(:max_salary).to_a
+    results = User.window(:max, :salary).partition_by(:department).as(:max_salary).to_a
     eng = results.select { |u| u.department == "Engineering" }
 
     eng.each { |u| assert_equal 90_000, u.attributes["max_salary"].to_i }
@@ -367,7 +387,7 @@ class QueryMethodsTest < Minitest::Test
   # Query execution
 
   def test_returns_results_with_window_function_values
-    results = User.window(row_number: { partition: :department, order_by: :salary, as: :rank })
+    results = User.window(row_number: { partition_by: :department, order_by: :salary, as: :rank })
 
     assert_equal 4, results.length
     results.each do |user|
@@ -377,7 +397,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_assigns_correct_row_numbers_within_partitions
-    results = User.window(row_number: { partition: :department, order_by: :salary, as: :rank })
+    results = User.window(row_number: { partition_by: :department, order_by: :salary, as: :rank })
     by_dept = results.group_by(&:department)
 
     eng = by_dept["Engineering"].sort_by { |u| u.attributes["rank"].to_i }
@@ -390,7 +410,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_fluent_chain_executes_and_returns_correct_results
-    results = User.row_number.partition_by(:department).order_by(:salary).as(:dept_rank).to_a
+    results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:dept_rank).to_a
 
     assert_equal 4, results.length
     results.each { |u| assert_includes u.attributes.keys, "dept_rank" }
@@ -399,14 +419,14 @@ class QueryMethodsTest < Minitest::Test
   # Ordering direction
 
   def test_order_desc_with_hash_in_fluent_api
-    sql = User.row_number.partition_by(:department).order_by(salary: :desc).as(:rn).to_sql
+    sql = User.window(:row_number).partition_by(:department).order_by(salary: :desc).as(:rn).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
     assert_includes sql, "#{col('salary')} DESC"
   end
 
   def test_order_asc_with_hash_in_fluent_api
-    sql = User.row_number.order_by(salary: :asc).as(:rn).to_sql
+    sql = User.window(:row_number).order_by(salary: :asc).as(:rn).to_sql
 
     assert_includes sql, "#{col('salary')} ASC"
   end
@@ -418,14 +438,14 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_order_mixed_directions
-    sql = User.row_number.order_by({ department: :asc }, { salary: :desc }).as(:rn).to_sql
+    sql = User.window(:row_number).order_by({ department: :asc }, { salary: :desc }).as(:rn).to_sql
 
     assert_includes sql, "#{col('department')} ASC"
     assert_includes sql, "#{col('salary')} DESC"
   end
 
   def test_order_desc_produces_correct_results
-    results = User.row_number.partition_by(:department).order_by(salary: :desc).as(:rn).to_a
+    results = User.window(:row_number).partition_by(:department).order_by(salary: :desc).as(:rn).to_a
     eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.attributes["rn"].to_i }
 
     assert_equal %w[Bob Alice], eng.map(&:name)
@@ -433,7 +453,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_order_symbol_still_defaults_to_asc
-    results = User.row_number.partition_by(:department).order_by(:salary).as(:rn).to_a
+    results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn).to_a
     eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.attributes["rn"].to_i }
 
     assert_equal %w[Alice Bob], eng.map(&:name)
@@ -459,8 +479,8 @@ class QueryMethodsTest < Minitest::Test
 
   def test_multiple_window_functions_in_hash_api
     sql = User.window(
-      row_number: { partition: :department, order_by: :salary, as: :rn },
-      rank: { partition: :department, order_by: :salary, as: :salary_rank }
+      row_number: { partition_by: :department, order_by: :salary, as: :rn },
+      rank: { partition_by: :department, order_by: :salary, as: :salary_rank }
     ).to_sql
 
     assert_includes sql, "ROW_NUMBER()"
@@ -471,8 +491,8 @@ class QueryMethodsTest < Minitest::Test
 
   def test_multiple_window_functions_return_correct_results
     results = User.window(
-      row_number: { partition: :department, order_by: :salary, as: :rn },
-      rank: { partition: :department, order_by: :salary, as: :salary_rank }
+      row_number: { partition_by: :department, order_by: :salary, as: :rn },
+      rank: { partition_by: :department, order_by: :salary, as: :salary_rank }
     )
 
     assert_equal 4, results.length
@@ -484,8 +504,8 @@ class QueryMethodsTest < Minitest::Test
 
   def test_multiple_window_functions_values_are_correct
     results = User.window(
-      row_number: { partition: :department, order_by: :salary, as: :rn },
-      sum: { value: :salary, partition: :department, as: :dept_total }
+      row_number: { partition_by: :department, order_by: :salary, as: :rn },
+      sum: { value: :salary, partition_by: :department, as: :dept_total }
     )
     eng = results.select { |u| u.department == "Engineering" }.sort_by { |u| u.attributes["rn"].to_i }
 
@@ -507,7 +527,7 @@ class QueryMethodsTest < Minitest::Test
   # Window order_by vs ActiveRecord order
 
   def test_order_by_sets_window_order_and_ar_order_sets_query_order
-    sql = User.row_number.partition_by(:department).order_by(:salary).as(:rn)
+    sql = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn)
               .order(:name).to_sql
 
     # Window ORDER BY
@@ -518,7 +538,7 @@ class QueryMethodsTest < Minitest::Test
   end
 
   def test_order_by_and_ar_order_produce_correct_results
-    results = User.row_number.partition_by(:department).order_by(:salary).as(:rn)
+    results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn)
                   .order(name: :asc).to_a
 
     # Query-level order: alphabetical by name
@@ -549,7 +569,7 @@ class QueryMethodsTest < Minitest::Test
     User.delete_all
     User.create!(name: "Solo", department: "Legal", salary: 75_000, hire_date: Date.new(2022, 1, 1))
 
-    results = User.row_number.partition_by(:department).order_by(:salary).as(:rn).to_a
+    results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn).to_a
 
     assert_equal 1, results.length
     assert_equal 1, results.first.attributes["rn"].to_i
@@ -559,7 +579,7 @@ class QueryMethodsTest < Minitest::Test
     User.delete_all
     User.create!(name: "Solo", department: "Legal", salary: 75_000, hire_date: Date.new(2022, 1, 1))
 
-    results = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_a
+    results = User.window(:sum, :salary).partition_by(:department).as(:dept_total).to_a
 
     assert_equal 1, results.length
     assert_equal 75_000, results.first.attributes["dept_total"].to_i
@@ -570,7 +590,7 @@ class QueryMethodsTest < Minitest::Test
   def test_window_with_null_partition_column
     User.create!(name: "Eve", department: nil, salary: 60_000, hire_date: Date.new(2023, 1, 1))
 
-    results = User.row_number.partition_by(:department).order_by(:salary).as(:rn).to_a
+    results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn).to_a
     null_dept = results.select { |u| u.department.nil? }
 
     assert_equal 1, null_dept.length
@@ -580,7 +600,7 @@ class QueryMethodsTest < Minitest::Test
   def test_window_with_null_order_column
     User.create!(name: "Eve", department: "Engineering", salary: nil, hire_date: Date.new(2023, 1, 1))
 
-    results = User.row_number.partition_by(:department).order_by(:salary).as(:rn).to_a
+    results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn).to_a
 
     assert_equal 5, results.length
     results.each { |u| assert_includes u.attributes.keys, "rn" }
@@ -589,7 +609,7 @@ class QueryMethodsTest < Minitest::Test
   def test_window_with_null_value_column
     User.create!(name: "Eve", department: "Engineering", salary: nil, hire_date: Date.new(2023, 1, 1))
 
-    results = User.window_sum(:salary).partition_by(:department).as(:dept_total).to_a
+    results = User.window(:sum, :salary).partition_by(:department).as(:dept_total).to_a
     eng = results.select { |u| u.department == "Engineering" }
 
     assert_equal 3, eng.length
@@ -642,7 +662,7 @@ class QueryMethodsTest < Minitest::Test
     Order.create!(user: alice, amount: 200)
     Order.create!(user: bob, amount: 300)
 
-    sql = Order.row_number.partition_by(:user).order_by(:amount).as(:rn).to_sql
+    sql = Order.window(:row_number).partition_by(:user).order_by(:amount).as(:rn).to_sql
 
     assert_includes sql, Order.connection.quote_column_name("user_id")
     refute_includes sql, "\"user\""
@@ -655,7 +675,7 @@ class QueryMethodsTest < Minitest::Test
     Order.create!(user: alice, amount: 200)
     Order.create!(user: bob, amount: 300)
 
-    results = Order.row_number.partition_by(:user).order_by(:amount).as(:rn).to_a
+    results = Order.window(:row_number).partition_by(:user).order_by(:amount).as(:rn).to_a
 
     alice_orders = results.select { |o| o.user_id == alice.id }.sort_by { |o| o.attributes["rn"].to_i }
     assert_equal [1, 2], alice_orders.map { |o| o.attributes["rn"].to_i }
@@ -664,11 +684,11 @@ class QueryMethodsTest < Minitest::Test
     assert_equal [1], bob_orders.map { |o| o.attributes["rn"].to_i }
   end
 
-  def test_window_order_by_association_name_resolves_to_foreign_key
+  def test_order_by_association_name_resolves_to_foreign_key
     alice = User.find_by(name: "Alice")
     Order.create!(user: alice, amount: 100)
 
-    sql = Order.row_number.order_by(:user).as(:rn).to_sql
+    sql = Order.window(:row_number).order_by(:user).as(:rn).to_sql
 
     assert_includes sql, Order.connection.quote_column_name("user_id")
   end
@@ -678,63 +698,14 @@ class QueryMethodsTest < Minitest::Test
     Order.create!(user: alice, amount: 100)
     Order.create!(user: alice, amount: 200)
 
-    sql = Order.window(row_number: { partition: :user, order_by: :amount, as: :rn }).to_sql
+    sql = Order.window(row_number: { partition_by: :user, order_by: :amount, as: :rn }).to_sql
 
     assert_includes sql, Order.connection.quote_column_name("user_id")
   end
 
   def test_actual_column_name_still_works
-    sql = Order.row_number.partition_by(:user_id).order_by(:amount).as(:rn).to_sql
+    sql = Order.window(:row_number).partition_by(:user_id).order_by(:amount).as(:rn).to_sql
 
     assert_includes sql, Order.connection.quote_column_name("user_id")
-  end
-
-  # has_one association name resolution
-
-  def test_has_one_partition_by_auto_joins_and_resolves
-    alice = User.find_by(name: "Alice")
-    bob = User.find_by(name: "Bob")
-    Profile.create!(user: alice, level: "senior")
-    Profile.create!(user: bob, level: "junior")
-
-    sql = User.row_number.partition_by(:profile).order_by(:salary).as(:rn).to_sql
-
-    assert_includes sql, "JOIN"
-    assert_includes sql, Profile.connection.quote_column_name("profiles")
-    assert_includes sql, "#{q('profiles')}.#{q('id')}"
-  end
-
-  def test_has_one_partition_by_produces_correct_results
-    alice = User.find_by(name: "Alice")
-    bob = User.find_by(name: "Bob")
-    Profile.create!(user: alice, level: "senior")
-    Profile.create!(user: bob, level: "junior")
-
-    results = User.row_number.partition_by(:profile).order_by(:salary).as(:rn).to_a
-
-    assert_equal 2, results.length
-    results.each { |u| assert_includes u.attributes.keys, "rn" }
-  end
-
-  def test_has_one_in_hash_api_auto_joins
-    alice = User.find_by(name: "Alice")
-    Profile.create!(user: alice, level: "senior")
-
-    sql = User.window(row_number: { partition: :profile, order_by: :salary, as: :rn }).to_sql
-
-    assert_includes sql, "JOIN"
-    assert_includes sql, "#{q('profiles')}.#{q('id')}"
-  end
-
-  def test_has_one_window_order_auto_joins
-    alice = User.find_by(name: "Alice")
-    bob = User.find_by(name: "Bob")
-    Profile.create!(user: alice, level: "senior")
-    Profile.create!(user: bob, level: "junior")
-
-    sql = User.row_number.order_by(:profile).as(:rn).to_sql
-
-    assert_includes sql, "JOIN"
-    assert_includes sql, "#{q('profiles')}.#{q('id')}"
   end
 end

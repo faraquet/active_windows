@@ -2,7 +2,7 @@
 
 ## Overall Assessment
 
-The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core functionality is implemented and tested, with 16 window functions available via both fluent and hash APIs. 67 tests passing with 328 assertions. CI runs against SQLite, PostgreSQL, and MySQL.
+The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core functionality is implemented and tested, with 16 window functions available via fluent, `window(:symbol)`, and hash APIs. 82 tests passing with 399 assertions. CI runs against SQLite, PostgreSQL, and MySQL.
 
 ---
 
@@ -26,7 +26,7 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 - ~~**RuboCop dependency**~~ — Removed.
 - ~~**LICENSE**~~ — Cleaned up. Full name, no year, `.txt` extension removed.
 - ~~**Boilerplate files**~~ — Removed. `CHANGELOG.md`, `CODE_OF_CONDUCT.md`, `bin/console`, `bin/setup`, `sig/active_windows.rbs`.
-- ~~**Ordering direction**~~ — Fixed. Supports `order(salary: :desc)`, `order({ col: :asc }, { col: :desc })`, and hash API `order: { salary: :desc }`.
+- ~~**Ordering direction**~~ — Fixed. Supports `order_by(salary: :desc)`, `order_by({ col: :asc }, { col: :desc })`, and hash API `order_by: { salary: :desc }`.
 - ~~**Gemfile/gemspec duplication**~~ — Fixed. Dev gems (`minitest`, `rake`) defined only in Gemfile under `test, development` group. No more bundler override warnings.
 - ~~**Cross-platform lockfile**~~ — Fixed. Added `aarch64-linux`, `arm-linux`, `arm64-darwin`, `x86_64-darwin`, `x86_64-linux` platforms.
 - ~~**Multiple window functions in one call**~~ — Tested. Single `window()` with multiple keys and chaining separate `window()` calls both work.
@@ -34,8 +34,9 @@ The gem provides a fluent DSL for SQL window functions in ActiveRecord. Core fun
 - ~~**PostgreSQL CI**~~ — Added. GitHub Actions workflow tests against PostgreSQL 17 with service container.
 - ~~**MySQL CI**~~ — Added. GitHub Actions workflow tests against MySQL 8.0 with service container.
 - ~~**MySQL compatibility**~~ — Fixed. Aliases now use `klass.connection.quote_column_name` to properly quote reserved words (e.g., `rank`) with backticks on MySQL and double quotes on PostgreSQL/SQLite. Test assertions use adapter-agnostic `q()` and `col()` helpers.
-- ~~**WindowChain `order` naming collision**~~ — Fixed. Renamed to `window_order` to avoid conflict with ActiveRecord's `.order()`. WindowChain now delegates `.order()` to the relation for query-level ordering. Uses `method_missing` for full relation method coverage.
-- ~~**Association name resolution**~~ — Added. `partition_by(:user)` automatically resolves to `user_id` via `belongs_to` reflection. Works in both fluent and hash APIs. 74 tests, 355 assertions.
+- ~~**WindowChain `order` naming collision**~~ — Fixed. Renamed to `order_by` to avoid conflict with ActiveRecord's `.order()`. Both fluent (`.order_by(:salary)`) and hash (`order_by: :salary`) APIs use `order_by`. WindowChain delegates `.order()` to the relation for query-level ordering. Uses `method_missing` for full relation method coverage.
+- ~~**Association name resolution**~~ — Added. `belongs_to`: `partition_by(:user)` resolves to `user_id`. Works in both fluent and hash APIs.
+- ~~**Unified `window()` entry point**~~ — Added. `window(:row_number)` returns a WindowChain (fluent), `window(:lag, :salary, 1, 0)` passes function args, `window(row_number: { ... })` is hash API. Single method, three modes. 82 tests, 399 assertions.
 
 ---
 

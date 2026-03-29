@@ -32,7 +32,7 @@ module ActiveWindows
 
     def to_window_hash
       options = {}
-      options[:partition] = @partition_columns unless @partition_columns.empty?
+      options[:partition_by] = @partition_columns unless @partition_columns.empty?
       options[:order_by] = @order_columns unless @order_columns.empty?
       options[:as] = @alias_name if @alias_name
       options[:value] = @function_args unless @function_args.empty?
@@ -65,23 +65,24 @@ module ActiveWindows
   end
 
   module QueryMethods
-    VALID_WINDOW_OPTIONS = %i[value partition order_by frame as].freeze
+    VALID_WINDOW_OPTIONS = %i[value partition_by order_by frame as].freeze
 
-    # Non-mutating: returns a new relation with window function projections
+    # Fluent: window(:row_number) returns a WindowChain
+    # Fluent with args: window(:lag, :salary, 1, 0) returns a WindowChain
+    # Hash: window(row_number: { partition: :department, order_by: :salary, as: :rank })
     def window(*args)
       raise ArgumentError, "wrong number of arguments (given 0, expected 1+)" if args.empty?
 
+      # Fluent API: window(:function_name, *function_args)
+      if args.first.is_a?(Symbol) && (args.length == 1 || !args[1].is_a?(Hash))
+        function_name = args.shift
+        return WindowChain.new(function_name, spawn, function_args: args.map(&:to_s))
+      end
+
+      # Hash API
       processed = process_window_args(args)
 
       result = spawn
-
-      # Auto-join has_one associations referenced in partition/order
-      joins_needed = processed.flat_map do |_name, options|
-        next [] unless options.is_a?(Hash)
-        association_joins_for(options[:partition]) + association_joins_for(options[:order_by])
-      end.uniq
-      result = result.joins(*joins_needed) if joins_needed.any?
-
       arel_nodes = processed.map { |name, options| build_window_function(name, options || {}) }
 
       # Ensure we keep all columns alongside the window function columns
@@ -89,83 +90,12 @@ module ActiveWindows
       result.select(*arel_nodes)
     end
 
-    # Ranking window functions
-    def row_number
-      WindowChain.new(:row_number, spawn)
-    end
-
-    def rank
-      WindowChain.new(:rank, spawn)
-    end
-
-    def dense_rank
-      WindowChain.new(:dense_rank, spawn)
-    end
-
-    def percent_rank
-      WindowChain.new(:percent_rank, spawn)
-    end
-
-    def cume_dist
-      WindowChain.new(:cume_dist, spawn)
-    end
-
-    def ntile(num_buckets)
-      WindowChain.new(:ntile, spawn, function_args: [num_buckets.to_s])
-    end
-
-    # Value window functions
-    def lag(column, offset = 1, default = nil)
-      args = [column.to_s, offset.to_s]
-      args << default.to_s unless default.nil?
-      WindowChain.new(:lag, spawn, function_args: args)
-    end
-
-    def lead(column, offset = 1, default = nil)
-      args = [column.to_s, offset.to_s]
-      args << default.to_s unless default.nil?
-      WindowChain.new(:lead, spawn, function_args: args)
-    end
-
-    def first_value(column)
-      WindowChain.new(:first_value, spawn, function_args: [column.to_s])
-    end
-
-    def last_value(column)
-      WindowChain.new(:last_value, spawn, function_args: [column.to_s])
-    end
-
-    def nth_value(column, n)
-      WindowChain.new(:nth_value, spawn, function_args: [column.to_s, n.to_s])
-    end
-
-    # Aggregate window functions
-    def window_sum(column)
-      WindowChain.new(:sum, spawn, function_args: [column.to_s])
-    end
-
-    def window_avg(column)
-      WindowChain.new(:avg, spawn, function_args: [column.to_s])
-    end
-
-    def window_count(column = "*")
-      WindowChain.new(:count, spawn, function_args: [column.to_s])
-    end
-
-    def window_min(column)
-      WindowChain.new(:min, spawn, function_args: [column.to_s])
-    end
-
-    def window_max(column)
-      WindowChain.new(:max, spawn, function_args: [column.to_s])
-    end
-
     private
 
     def build_window_function(name, options)
       window = Arel::Nodes::Window.new
 
-      apply_window_partition(window, options[:partition])
+      apply_window_partition(window, options[:partition_by])
       apply_window_order(window, options[:order_by])
       apply_window_frame(window, options[:frame]) if options[:frame]
 
@@ -237,19 +167,8 @@ module ActiveWindows
       reflection = klass.reflect_on_association(name_sym)
       if reflection&.macro == :belongs_to
         klass.arel_table[reflection.foreign_key.to_sym]
-      elsif reflection&.macro == :has_one
-        reflection.klass.arel_table[reflection.klass.primary_key.to_sym]
       else
         klass.arel_table[name_sym]
-      end
-    end
-
-    def association_joins_for(columns)
-      Array(columns).filter_map do |col|
-        next unless col.is_a?(Symbol) || col.is_a?(String)
-
-        reflection = klass.reflect_on_association(col.to_sym)
-        col.to_sym if reflection&.macro == :has_one
       end
     end
 

@@ -6,13 +6,13 @@ A Ruby DSL for SQL window functions in ActiveRecord. Write expressive window fun
 
 ```ruby
 # Fluent API
-User.row_number.partition_by(:department).order_by(:salary).as(:rank)
+User.window(:row_number).partition_by(:department).order_by(:salary).as(:rank)
 
 # Hash API
-User.window(row_number: { partition: :department, order_by: :salary, as: :rank })
+User.window(row_number: { partition_by: :department, order_by: :salary, as: :rank })
 
 # Both produce:
-# SELECT "users".*, ROW_NUMBER() OVER (PARTITION BY "users"."department" ORDER BY "users"."salary") AS rank
+# SELECT "users".*, ROW_NUMBER() OVER (PARTITION BY "users"."department" ORDER BY "users"."salary") AS "rank"
 # FROM "users"
 ```
 
@@ -43,25 +43,22 @@ ActiveWindows provides two equivalent APIs: a **fluent API** with chainable meth
 
 ### Fluent API
 
-Every window function method returns a chainable object with `.partition_by()`, `.order_by()`, and `.as()`:
+`window(:function_name, *args)` returns a chainable object with `.partition_by()`, `.order_by()`, and `.as()`:
 
 ```ruby
-User.row_number.partition_by(:department).order_by(:salary).as(:rank)
+User.window(:row_number).partition_by(:department).order_by(:salary).as(:rank)
+
+# Functions with arguments:
+User.window(:lag, :salary, 1, 0).order_by(:hire_date).as(:prev_salary)
+User.window(:ntile, 4).order_by(:salary).as(:quartile)
 ```
 
 All three chain methods are optional. `.order_by()` sets the window's `ORDER BY`, while ActiveRecord's `.order()` controls the query-level `ORDER BY`. You can use both together:
 
 ```ruby
-User.row_number.order_by(:salary).as(:rn).order(:name)
+User.window(:row_number).order_by(:salary).as(:rn).order(:name)
 # Window:  OVER (ORDER BY salary)
 # Query:   ORDER BY name
-```
-
-Order can be mixed freely:
-
-```ruby
-User.row_number.as(:rn).order_by(:created_at)
-User.dense_rank.order_by(:score).as(:position)
 ```
 
 ### Hash API
@@ -70,7 +67,7 @@ Pass one or more window function definitions as a hash:
 
 ```ruby
 User.window(
-  row_number: { partition: :department, order_by: :salary, as: :rank }
+  row_number: { partition_by: :department, order_by: :salary, as: :rank }
 )
 ```
 
@@ -78,7 +75,7 @@ Available options:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `:partition` | `Symbol`, `Array` | Column(s) for `PARTITION BY` |
+| `:partition_by` | `Symbol`, `Array` | Column(s) for `PARTITION BY` |
 | `:order_by` | `Symbol`, `Array` | Column(s) for `ORDER BY` |
 | `:as` | `Symbol` | Alias for the result column |
 | `:frame` | `String` | Raw SQL frame clause (e.g. `"ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING"`) |
@@ -86,38 +83,15 @@ Available options:
 
 ### Association Names
 
-You can use association names instead of raw column names. ActiveWindows automatically resolves them:
-
-**`belongs_to`** — resolves to the foreign key on the current table:
+You can use `belongs_to` association names instead of foreign key columns. ActiveWindows automatically resolves them:
 
 ```ruby
 # These are equivalent:
-Order.row_number.partition_by(:user).order_by(:amount).as(:rn)
-Order.row_number.partition_by(:user_id).order_by(:amount).as(:rn)
+Order.window(:row_number).partition_by(:user).order_by(:amount).as(:rn)
+Order.window(:row_number).partition_by(:user_id).order_by(:amount).as(:rn)
 
 # Works in the hash API too:
-Order.window(row_number: { partition: :user, order_by: :amount, as: :rn })
-```
-
-**`has_one`** — auto-joins the associated table and references its primary key:
-
-```ruby
-# User has_one :profile
-# Automatically joins profiles and partitions by profiles.id
-User.row_number.partition_by(:profile).order_by(:salary).as(:rn)
-
-# Equivalent to:
-User.joins(:profile).row_number.partition_by("profiles.id").order_by(:salary).as(:rn)
-```
-
-**`has_many`** — not supported. Joining a `has_many` multiplies rows, which would silently corrupt window function results. Aggregate manually instead:
-
-```ruby
-# Instead of partition_by(:orders), aggregate first:
-User.joins(:orders)
-    .group(:id)
-    .select("users.*, SUM(orders.amount) AS total_spent")
-    .window(rank: { order_by: "total_spent", as: :spending_rank })
+Order.window(row_number: { partition_by: :user, order_by: :amount, as: :rn })
 ```
 
 ### Chaining with ActiveRecord
@@ -126,7 +100,7 @@ Window functions integrate naturally with standard ActiveRecord methods:
 
 ```ruby
 User.where(active: true)
-    .row_number
+    .window(:row_number)
     .partition_by(:department)
     .order_by(:salary)
     .as(:rank)
@@ -146,7 +120,7 @@ When no `.select()` is specified, `*` is automatically included so all model col
 Window function values are accessible as attributes on the returned records:
 
 ```ruby
-results = User.row_number.partition_by(:department).order_by(:salary).as(:rank)
+results = User.window(:row_number).partition_by(:department).order_by(:salary).as(:rank)
 
 results.each do |user|
   puts "#{user.name}: rank #{user.attributes['rank']}"
@@ -159,66 +133,64 @@ end
 
 ```ruby
 # ROW_NUMBER() - sequential integer within partition
-User.row_number.partition_by(:department).order_by(:salary).as(:rn)
+User.window(:row_number).partition_by(:department).order_by(:salary).as(:rn)
 
 # RANK() - rank with gaps for ties
-User.rank.partition_by(:department).order_by(:salary).as(:salary_rank)
+User.window(:rank).partition_by(:department).order_by(:salary).as(:salary_rank)
 
 # DENSE_RANK() - rank without gaps for ties
-User.dense_rank.partition_by(:department).order_by(:salary).as(:dense_salary_rank)
+User.window(:dense_rank).partition_by(:department).order_by(:salary).as(:dense_salary_rank)
 
 # PERCENT_RANK() - relative rank as a fraction (0 to 1)
-User.percent_rank.order_by(:salary).as(:percentile)
+User.window(:percent_rank).order_by(:salary).as(:percentile)
 
 # CUME_DIST() - cumulative distribution (fraction of rows <= current row)
-User.cume_dist.order_by(:salary).as(:cumulative)
+User.window(:cume_dist).order_by(:salary).as(:cumulative)
 
 # NTILE(n) - divide rows into n roughly equal buckets
-User.ntile(4).order_by(:salary).as(:quartile)
+User.window(:ntile, 4).order_by(:salary).as(:quartile)
 ```
 
 ### Value Functions
 
 ```ruby
 # LAG(column, offset, default) - value from a preceding row
-User.lag(:salary).order_by(:hire_date).as(:prev_salary)
-User.lag(:salary, 2).order_by(:hire_date).as(:two_back)         # custom offset
-User.lag(:salary, 1, 0).order_by(:hire_date).as(:prev_or_zero)  # with default
+User.window(:lag, :salary).order_by(:hire_date).as(:prev_salary)
+User.window(:lag, :salary, 2).order_by(:hire_date).as(:two_back)         # custom offset
+User.window(:lag, :salary, 1, 0).order_by(:hire_date).as(:prev_or_zero)  # with default
 
 # LEAD(column, offset, default) - value from a following row
-User.lead(:salary).order_by(:hire_date).as(:next_salary)
-User.lead(:salary, 2, 0).order_by(:hire_date).as(:two_ahead)
+User.window(:lead, :salary).order_by(:hire_date).as(:next_salary)
+User.window(:lead, :salary, 2, 0).order_by(:hire_date).as(:two_ahead)
 
 # FIRST_VALUE(column) - first value in the window frame
-User.first_value(:name).partition_by(:department).order_by(:salary).as(:lowest_paid)
+User.window(:first_value, :name).partition_by(:department).order_by(:salary).as(:lowest_paid)
 
 # LAST_VALUE(column) - last value in the window frame
-User.last_value(:name).partition_by(:department).order_by(:salary).as(:highest_paid)
+User.window(:last_value, :name).partition_by(:department).order_by(:salary).as(:highest_paid)
 
 # NTH_VALUE(column, n) - nth value in the window frame
-User.nth_value(:name, 2).partition_by(:department).order_by(:salary).as(:second_lowest)
+User.window(:nth_value, :name, 2).partition_by(:department).order_by(:salary).as(:second_lowest)
 ```
 
 ### Aggregate Window Functions
 
-Prefixed with `window_` to avoid conflicts with ActiveRecord's built-in aggregate methods:
-
 ```ruby
 # SUM(column) OVER(...)
-User.window_sum(:salary).partition_by(:department).as(:dept_total)
+User.window(:sum, :salary).partition_by(:department).as(:dept_total)
 
 # AVG(column) OVER(...)
-User.window_avg(:salary).partition_by(:department).as(:dept_avg)
+User.window(:avg, :salary).partition_by(:department).as(:dept_avg)
 
 # COUNT(column) OVER(...)
-User.window_count(:id).partition_by(:department).as(:dept_size)
-User.window_count.partition_by(:department).as(:dept_size)  # COUNT(*)
+User.window(:count, :id).partition_by(:department).as(:dept_size)
+User.window(:count, "*").partition_by(:department).as(:dept_size)  # COUNT(*)
 
 # MIN(column) OVER(...)
-User.window_min(:salary).partition_by(:department).as(:min_salary)
+User.window(:min, :salary).partition_by(:department).as(:min_salary)
 
 # MAX(column) OVER(...)
-User.window_max(:salary).partition_by(:department).as(:max_salary)
+User.window(:max, :salary).partition_by(:department).as(:max_salary)
 ```
 
 ### Window Frames
@@ -228,7 +200,7 @@ Pass a raw SQL frame clause via the hash API:
 ```ruby
 User.window(sum: {
   value: :salary,
-  partition: :department,
+  partition_by: :department,
   order_by: :hire_date,
   frame: "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW",
   as: :running_total
@@ -240,7 +212,7 @@ User.window(sum: {
 ### Rank employees by salary within each department
 
 ```ruby
-User.rank
+User.window(:rank)
     .partition_by(:department)
     .order_by(:salary)
     .as(:salary_rank)
@@ -260,7 +232,7 @@ User.window(sum: {
 ### Compare each salary to the department average
 
 ```ruby
-users = User.window_avg(:salary).partition_by(:department).as(:dept_avg)
+users = User.window(:avg, :salary).partition_by(:department).as(:dept_avg)
 
 users.each do |user|
   diff = user.salary - user.attributes["dept_avg"].to_f
@@ -271,7 +243,7 @@ end
 ### Find the previous and next hire in each department
 
 ```ruby
-User.lag(:name)
+User.window(:lag, :name)
     .partition_by(:department)
     .order_by(:hire_date)
     .as(:previous_hire)
@@ -280,7 +252,7 @@ User.lag(:name)
 ### Divide employees into salary quartiles
 
 ```ruby
-User.ntile(4).order_by(:salary).as(:quartile)
+User.window(:ntile, 4).order_by(:salary).as(:quartile)
 ```
 
 ### Rank users by total order amount (with joins)
@@ -297,7 +269,7 @@ User.joins(:orders)
 ```ruby
 # Rank orders by amount within each user
 Order.joins(:user)
-     .row_number
+     .window(:row_number)
      .partition_by("users.id")
      .order_by(amount: :desc)
      .as(:order_rank)
@@ -305,7 +277,7 @@ Order.joins(:user)
 # Number each user's orders chronologically
 Order.joins(:user)
      .select("orders.*, users.name AS user_name")
-     .row_number
+     .window(:row_number)
      .partition_by(:user_id)
      .order_by(:created_at)
      .as(:order_number)
@@ -319,7 +291,7 @@ Order.joins(:user)
      .where(users: { department: "Engineering" })
      .window(sum: {
        value: :amount,
-       partition: :user_id,
+       partition_by: :user_id,
        order_by: :created_at,
        frame: "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW",
        as: :running_total
