@@ -25,7 +25,7 @@ module ActiveWindows
       self
     end
 
-    def window_order(*columns)
+    def order_by(*columns)
       @order_columns = columns.flatten
       self
     end
@@ -33,7 +33,7 @@ module ActiveWindows
     def to_window_hash
       options = {}
       options[:partition] = @partition_columns unless @partition_columns.empty?
-      options[:order] = @order_columns unless @order_columns.empty?
+      options[:order_by] = @order_columns unless @order_columns.empty?
       options[:as] = @alias_name if @alias_name
       options[:value] = @function_args unless @function_args.empty?
       { @function => options }
@@ -65,7 +65,7 @@ module ActiveWindows
   end
 
   module QueryMethods
-    VALID_WINDOW_OPTIONS = %i[value partition order frame as].freeze
+    VALID_WINDOW_OPTIONS = %i[value partition order_by frame as].freeze
 
     # Non-mutating: returns a new relation with window function projections
     def window(*args)
@@ -78,7 +78,7 @@ module ActiveWindows
       # Auto-join has_one associations referenced in partition/order
       joins_needed = processed.flat_map do |_name, options|
         next [] unless options.is_a?(Hash)
-        association_joins_for(options[:partition]) + association_joins_for(options[:order])
+        association_joins_for(options[:partition]) + association_joins_for(options[:order_by])
       end.uniq
       result = result.joins(*joins_needed) if joins_needed.any?
 
@@ -166,7 +166,7 @@ module ActiveWindows
       window = Arel::Nodes::Window.new
 
       apply_window_partition(window, options[:partition])
-      apply_window_order(window, options[:order])
+      apply_window_order(window, options[:order_by])
       apply_window_frame(window, options[:frame]) if options[:frame]
 
       expressions = extract_window_value(options[:value])
